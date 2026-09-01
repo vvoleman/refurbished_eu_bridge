@@ -1,0 +1,12 @@
+{
+  "eu_transformer_hum": {
+    "category": "block",
+    "subtitle": "subtitles.refurbished_eu.eu_transformer_hum",
+    "sounds": [
+      {
+        "name": "refurbished_furniture:block/electricity_generator/engine",
+        "stream": false
+      }
+    ]
+  }
+}

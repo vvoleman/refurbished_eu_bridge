@@ -1,0 +1,6 @@
+.gradle/
+build/
+run/
+localmaven/
+original_mods/
+.idea/

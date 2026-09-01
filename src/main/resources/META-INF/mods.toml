@@ -1,0 +1,44 @@
+modLoader="kotlinforforge"
+loaderVersion="[3,)"
+license="MIT"
+
+[[mods]]
+modId="refurbished_eu"
+version="0.1.0"
+displayName="Refurbished EU Bridge"
+authors="vvoleman"
+description='''
+Adds an EU Transformer that powers MrCrayfish's Furniture Refurbished electricity
+networks directly from an IC2 Classic EU grid.
+'''
+
+[[dependencies."refurbished_eu"]]
+    modId="forge"
+    mandatory=true
+    versionRange="[43.4.0,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies."refurbished_eu"]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.19.2,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies."refurbished_eu"]]
+    modId="refurbished_furniture"
+    mandatory=true
+    versionRange="[1.0.9,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies."refurbished_eu"]]
+    modId="ic2"
+    mandatory=true
+    # IC2 Classic resolves version from ${file.jarVersion}, which is Minecraft-
+    # prefixed (e.g. "1.19.2-2.1.2.1"). A range like "[2.1.2,)" therefore never
+    # matches, because 1.19.2-... sorts below 2.1.2.
+    versionRange="[1.19.2,)"
+    ordering="AFTER"
+    side="BOTH"

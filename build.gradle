@@ -1,0 +1,82 @@
+plugins {
+    id 'eclipse'
+    id 'net.minecraftforge.gradle' version '5.1.+'
+    id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
+}
+
+version = mod_version
+group = mod_group
+archivesBaseName = mod_id
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+minecraft {
+    // Mojang official mappings: matches the names used in the docs and in
+    // MrCrayfish's source. Production jars get remapped to these by fg.deobf below.
+    mappings channel: 'official', version: minecraft_version
+
+    runs {
+        client {
+            workingDirectory project.file('run')
+            property 'forge.logging.console.level', 'debug'
+            mods { "${mod_id}" { source sourceSets.main } }
+        }
+        server {
+            workingDirectory project.file('run')
+            property 'forge.logging.console.level', 'debug'
+            mods { "${mod_id}" { source sourceSets.main } }
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { name = 'Kotlin for Forge'; url = 'https://thedarkcolour.github.io/KotlinForForge/' }
+    // fg.deobf() needs a real repository with a group/artifact/version layout;
+    // files() is silently ignored and flatDir can't serve the remapped artifact back.
+    maven {
+        name = 'packmods'
+        url = uri("${projectDir}/localmaven")
+        metadataSources { artifact() }
+    }
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // Provided at runtime by the pack's kotlinforforge-3.12.0-all.jar.
+    implementation 'thedarkcolour:kotlinforforge:3.12.0'
+
+    // The mods we bridge. compileOnly: compiled against, never bundled.
+    // fg.deobf remaps their SRG names to the official ones used in dev.
+    //
+    // These are deliberately NOT on the runtime classpath. IC2 Classic's mixin
+    // refmap (mixins.ic2.refmap.json) ships only a "searge" mapping set, and its
+    // BlockMixin @Accessor hardcodes the SRG field name f_60439_ - which does not
+    // exist in a Mojmap dev runtime, where that field is BlockBehaviour.properties.
+    // Putting IC2C on the dev classpath therefore crashes the game during mixin
+    // apply, before anything of ours runs. Test by installing the built jar into
+    // the real (production) pack instead, where SRG names are correct.
+    compileOnly fg.deobf('packmods:refurbished_furniture:1.0.9')
+    compileOnly fg.deobf('packmods:framework:0.7.12')
+    compileOnly fg.deobf('packmods:ic2classic:2.1.2.1')
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions.jvmTarget = '17'
+}
+
+jar {
+    manifest {
+        attributes([
+            'Specification-Title'     : mod_id,
+            'Specification-Vendor'    : 'vvoleman',
+            'Specification-Version'   : '1',
+            'Implementation-Title'    : mod_id,
+            'Implementation-Version'  : project.version,
+            'Implementation-Vendor'   : 'vvoleman'
+        ])
+    }
+}
+
+jar.finalizedBy('reobfJar')

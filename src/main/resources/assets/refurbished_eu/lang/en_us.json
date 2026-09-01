@@ -1,16 +1,20 @@
 {
-  "block.refurbished_eu.eu_transformer": "EU Transformer",
+  "block.refurbished_eu.low_eu_transformer": "Low EU Transformer",
+  "block.refurbished_eu.medium_eu_transformer": "Medium EU Transformer",
+  "block.refurbished_eu.high_eu_transformer": "High EU Transformer",
   "gui.refurbished_eu.status": "Status: %s",
   "gui.refurbished_eu.status.running": "Running",
   "gui.refurbished_eu.status.off": "Switched off",
   "gui.refurbished_eu.status.no_power": "No EU",
   "gui.refurbished_eu.status.overloaded": "Overloaded",
   "gui.refurbished_eu.buffer": "Buffer: %s / %s EU",
-  "gui.refurbished_eu.connected": "Connected devices: %s",
+  "gui.refurbished_eu.connected": "Connected devices: %s / %s",
   "gui.refurbished_eu.active": "Active devices: %s",
   "gui.refurbished_eu.draw": "Draw: %s EU/t",
-  "gui.refurbished_eu.tier": "Accepts tier %s (LV, 32 EU/t)",
+  "gui.refurbished_eu.tier": "Accepts IC2 tier %s",
   "gui.refurbished_eu.turn_on": "Turn On",
   "gui.refurbished_eu.turn_off": "Turn Off",
-  "subtitles.refurbished_eu.eu_transformer_hum": "Transformer hums"
+  "subtitles.refurbished_eu.eu_transformer_hum": "Transformer hums",
+  "gui.refurbished_eu.name": "Name",
+  "gui.refurbished_eu.name_hint": "Name this transformer"
 }

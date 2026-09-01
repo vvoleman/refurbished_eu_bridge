@@ -66,6 +66,14 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
     kotlinOptions.jvmTarget = '17'
 }
 
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [mod_id: mod_id, mod_version: mod_version]
+    inputs.properties replaceProperties
+    filesMatching(['META-INF/mods.toml']) {
+        expand replaceProperties
+    }
+}
+
 jar {
     manifest {
         attributes([

@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "powered=false": {
+      "model": "refurbished_eu:block/low_eu_transformer"
+    },
+    "powered=true": {
+      "model": "refurbished_eu:block/low_eu_transformer_on"
+    }
+  }
+}

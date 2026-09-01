@@ -1,6 +1,0 @@
-{
-  "variants": {
-    "powered=false": { "model": "refurbished_eu:block/eu_transformer" },
-    "powered=true":  { "model": "refurbished_eu:block/eu_transformer_on" }
-  }
-}

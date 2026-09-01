@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:block/cube_all",
+  "textures": {
+    "all": "refurbished_eu:block/medium_eu_transformer_on"
+  }
+}

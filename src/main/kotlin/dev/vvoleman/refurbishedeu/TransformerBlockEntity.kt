@@ -2,6 +2,7 @@ package dev.vvoleman.refurbishedeu
 
 import com.mrcrayfish.furniture.refurbished.blockentity.ElectricitySourceBlockEntity
 import com.mrcrayfish.furniture.refurbished.blockentity.ILevelAudio
+import com.mrcrayfish.furniture.refurbished.blockentity.INameable
 import com.mrcrayfish.furniture.refurbished.blockentity.IProcessingBlock
 import com.mrcrayfish.furniture.refurbished.blockentity.LightswitchBlockEntity
 import com.mrcrayfish.furniture.refurbished.electricity.IElectricityNode
@@ -17,6 +18,7 @@ import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.MenuProvider
 import net.minecraft.world.entity.player.Inventory
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.inventory.ContainerData
@@ -44,7 +46,16 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     ElectricitySourceBlockEntity(RefurbishedEuBridge.EU_TRANSFORMER_BE.get(), pos, state),
     IEnergySink,
     MenuProvider,
-    ILevelAudio {
+    ILevelAudio,
+    INameable {
+
+    /** Derived from the block, so a single block entity class serves all tiers. */
+    val tier: TransformerTier
+        get() = (blockState.block as? TransformerBlock)?.tier ?: TransformerTier.LOW
+
+    /** Player-assigned label, shown above the block and in the GUI. */
+    var customName: String? = null
+        private set
 
     private var storedEu: Int = 0
     private var netRegistered: Boolean = false
@@ -66,6 +77,9 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
             DATA_ENABLED -> if (enabled) 1 else 0
             DATA_OVERLOADED -> if (isNodeOverloaded) 1 else 0
             DATA_DRAW -> currentDraw()
+            DATA_BUFFER_MAX -> TransformerConfig.buffer(tier)
+            DATA_TIER -> TransformerConfig.sinkTier(tier)
+            DATA_MAX_DEVICES -> TransformerConfig.maxDevices(tier)
             else -> 0
         }
 
@@ -97,14 +111,20 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
 
     // ---- IC2 Classic: energy sink ---------------------------------------------------
 
-    override fun getSinkTier(): Int = TransformerConfig.SINK_TIER
+    override fun getSinkTier(): Int = TransformerConfig.sinkTier(tier)
+
+    /** Devices this transformer can power before Refurbished flags it overloaded. */
+    override fun getMaxPowerableNodes(): Int = TransformerConfig.maxDevices(tier)
+
+    /** Direct wrench links. Matched to the device cap so neither is a hidden bottleneck. */
+    override fun getNodeMaximumConnections(): Int = TransformerConfig.maxDevices(tier)
 
     override fun getRequestedEnergy(): Int =
-        if (!enabled) 0 else (TransformerConfig.BUFFER_EU - storedEu).coerceAtLeast(0)
+        if (!enabled) 0 else (TransformerConfig.buffer(tier) - storedEu).coerceAtLeast(0)
 
     override fun acceptEnergy(direction: Direction?, amount: Int, voltage: Int): Int {
         if (!enabled) return amount
-        val room = (TransformerConfig.BUFFER_EU - storedEu).coerceAtLeast(0)
+        val room = (TransformerConfig.buffer(tier) - storedEu).coerceAtLeast(0)
         val taken = minOf(room, amount)
         storedEu += taken
         return amount - taken // IC2 expects the *unaccepted* remainder back
@@ -131,7 +151,7 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
 
         if (!enabled) {
             if (isNodePowered) setNodePowered(false)
-            if (level.gameTime % LOAD_CHECK_INTERVAL == 0L) {
+            if (level.gameTime % TransformerConfig.loadCheckInterval() == 0L) {
                 connectedCount = countConnectedDevices()
                 activeCount = 0
             }
@@ -142,15 +162,29 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
         // tick (its BlockEntityMixin registers any IElectricityNode on setLevel),
         // and that default already does the overload check and pushes power to
         // every reachable module. All we owe it is an honest powered flag.
-        val energised = storedEu >= TransformerConfig.STANDBY_EU_PER_TICK
+        // maxOf(1, ..) matters: standbyEuPerTick is allowed to be 0, and a bare
+        // `storedEu >= 0` would keep the network live on an empty buffer forever.
+        val energised = storedEu >= maxOf(1, TransformerConfig.standbyEu())
         if (energised != isNodePowered) setNodePowered(energised)
         if (!energised) return
 
-        // earlyNodeTick() switches us off if the network is oversized. Don't bill
-        // for a network we aren't actually powering.
-        if (isNodeOverloaded) return
+        // earlyNodeTick() switches us off if the network is oversized, and it will
+        // never re-evaluate while the flag is set - its whole body is guarded on
+        // !isNodeOverloaded(). Nothing else clears it and it persists to NBT, so
+        // we have to re-check here or the block stays overloaded forever.
+        if (isNodeOverloaded) {
+            if (level.gameTime % TransformerConfig.loadCheckInterval() == 0L) {
+                if (!searchNodeNetwork(false).overloaded()) {
+                    setNodeOverloaded(false)
+                } else {
+                    connectedCount = countConnectedDevices()
+                    activeCount = 0
+                }
+            }
+            return
+        }
 
-        if (level.gameTime % LOAD_CHECK_INTERVAL == 0L) {
+        if (level.gameTime % TransformerConfig.loadCheckInterval() == 0L) {
             recountNetwork()
         }
 
@@ -159,8 +193,8 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     private fun currentDraw(): Int =
-        if (!enabled) 0 else TransformerConfig.STANDBY_EU_PER_TICK +
-            activeCount * TransformerConfig.EU_PER_ACTIVE_APPLIANCE
+        if (!enabled) 0 else TransformerConfig.standbyEu() +
+            activeCount * TransformerConfig.euPerActive()
 
     /**
      * Every device physically linked to us, regardless of whether power can
@@ -210,15 +244,39 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
 
     // ---- Menu -------------------------------------------------------------------------
 
-    override fun getDisplayName(): Component = Component.translatable("block.refurbished_eu.eu_transformer")
+    override fun getDisplayName(): Component = blockState.block.name
 
     override fun createMenu(id: Int, inventory: Inventory, player: Player): AbstractContainerMenu =
-        TransformerMenu(id, inventory, this, dataAccess)
+        TransformerMenu(id, inventory, this, dataAccess, worldPosition)
+
+    /**
+     * Implementing INameable means Refurbished's own systems (its HomeControl
+     * computer app, for instance) can rename the transformer too, not just our GUI.
+     */
+    override fun setName(player: ServerPlayer?, name: String?) {
+        val trimmed = name?.trim().orEmpty()
+        customName = trimmed.take(ModNetwork.MAX_NAME_LENGTH).ifEmpty { null }
+        setChanged()
+        // ContainerData carries ints only, so the name reaches clients through the
+        // block update packet instead.
+        val level = this.level ?: return
+        if (!level.isClientSide) {
+            level.sendBlockUpdated(worldPosition, blockState, blockState, Block.UPDATE_ALL)
+        }
+    }
 
     fun togglePower() {
         enabled = !enabled
-        setChanged()
         if (!enabled && isNodePowered) setNodePowered(false)
+        // Mirrors the vanilla generator: switching back on is also a way out of
+        // an overload, provided the network is actually within limits again.
+        if (enabled && isNodeOverloaded) {
+            val level = this.level
+            if (level != null && !level.isClientSide && !searchNodeNetwork(false).overloaded()) {
+                setNodeOverloaded(false)
+            }
+        }
+        setChanged()
     }
 
     // ---- Audio --------------------------------------------------------------------------
@@ -247,7 +305,13 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
 
     override fun getAudioHash(): Int = worldPosition.hashCode()
 
-    override fun isAudioEqual(other: ILevelAudio): Boolean =
+    /**
+     * Nullable on purpose: Refurbished stores audio in a fastutil custom-hash map
+     * whose Strategy.equals compares candidates against null for empty slots. A
+     * non-null Kotlin parameter compiles to an intrinsic null check and crashes
+     * the client tick the moment the map is probed.
+     */
+    override fun isAudioEqual(other: ILevelAudio?): Boolean =
         other is TransformerBlockEntity && other.worldPosition == worldPosition
 
     // ---- Energy net registration ------------------------------------------------------
@@ -280,8 +344,17 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
 
     // ---- Persistence -------------------------------------------------------------------
 
+    override fun getUpdateTag(): CompoundTag {
+        val tag = super.getUpdateTag()
+        customName?.let { tag.putString(TAG_CUSTOM_NAME, it) }
+        return tag
+    }
+
     override fun load(tag: CompoundTag) {
         super.load(tag)
+        customName = if (tag.contains(TAG_CUSTOM_NAME)) {
+            tag.getString(TAG_CUSTOM_NAME).ifEmpty { null }
+        } else null
         storedEu = tag.getInt("StoredEu")
         enabled = !tag.contains("Enabled") || tag.getBoolean("Enabled")
     }
@@ -290,18 +363,21 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
         super.saveAdditional(tag)
         tag.putInt("StoredEu", storedEu)
         tag.putBoolean("Enabled", enabled)
+        customName?.let { tag.putString(TAG_CUSTOM_NAME, it) }
     }
 
     companion object {
+        const val TAG_CUSTOM_NAME = "CustomName"
+
         const val DATA_STORED_EU = 0
         const val DATA_CONNECTED = 1
         const val DATA_ACTIVE = 2
         const val DATA_ENABLED = 3
         const val DATA_OVERLOADED = 4
         const val DATA_DRAW = 5
-        const val DATA_SIZE = 6
-
-        /** Re-scan for active load twice a second instead of every tick. */
-        private const val LOAD_CHECK_INTERVAL = 10L
+        const val DATA_BUFFER_MAX = 6
+        const val DATA_TIER = 7
+        const val DATA_MAX_DEVICES = 8
+        const val DATA_SIZE = 9
     }
 }

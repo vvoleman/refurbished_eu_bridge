@@ -18,7 +18,10 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraftforge.network.NetworkHooks
 
-class TransformerBlock(properties: BlockBehaviour.Properties) : Block(properties), EntityBlock {
+class TransformerBlock(
+    properties: BlockBehaviour.Properties,
+    val tier: TransformerTier
+) : Block(properties), EntityBlock {
 
     init {
         registerDefaultState(

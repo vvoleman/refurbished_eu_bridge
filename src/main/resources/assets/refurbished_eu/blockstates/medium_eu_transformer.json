@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "powered=false": {
+      "model": "refurbished_eu:block/medium_eu_transformer"
+    },
+    "powered=true": {
+      "model": "refurbished_eu:block/medium_eu_transformer_on"
+    }
+  }
+}

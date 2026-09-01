@@ -1,5 +1,6 @@
 package dev.vvoleman.refurbishedeu
 
+import net.minecraft.core.BlockPos
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
@@ -17,12 +18,14 @@ class TransformerMenu(
     containerId: Int,
     playerInventory: Inventory,
     private val blockEntity: TransformerBlockEntity?,
-    private val data: ContainerData
+    private val data: ContainerData,
+    /** Lets the client screen find the block entity, which carries the name. */
+    val blockPos: BlockPos
 ) : AbstractContainerMenu(RefurbishedEuBridge.EU_TRANSFORMER_MENU.get(), containerId) {
 
     /** Client-side constructor: no block entity, dummy data that the server fills. */
-    constructor(containerId: Int, playerInventory: Inventory) :
-        this(containerId, playerInventory, null, SimpleContainerData(TransformerBlockEntity.DATA_SIZE))
+    constructor(containerId: Int, playerInventory: Inventory, pos: BlockPos) :
+        this(containerId, playerInventory, null, SimpleContainerData(TransformerBlockEntity.DATA_SIZE), pos)
 
     init {
         addDataSlots(data)
@@ -34,6 +37,9 @@ class TransformerMenu(
     val isEnabled: Boolean get() = data[TransformerBlockEntity.DATA_ENABLED] != 0
     val isOverloaded: Boolean get() = data[TransformerBlockEntity.DATA_OVERLOADED] != 0
     val currentDraw: Int get() = data[TransformerBlockEntity.DATA_DRAW]
+    val bufferMax: Int get() = data[TransformerBlockEntity.DATA_BUFFER_MAX]
+    val sinkTier: Int get() = data[TransformerBlockEntity.DATA_TIER]
+    val maxDevices: Int get() = data[TransformerBlockEntity.DATA_MAX_DEVICES]
 
     override fun clickMenuButton(player: Player, id: Int): Boolean {
         if (id == BUTTON_TOGGLE_POWER) {

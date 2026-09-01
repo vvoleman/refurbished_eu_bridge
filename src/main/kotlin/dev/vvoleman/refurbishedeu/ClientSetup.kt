@@ -5,6 +5,7 @@ import net.minecraft.client.gui.screens.MenuScreens
 import net.minecraftforge.client.event.EntityRenderersEvent
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
+import thedarkcolour.kotlinforforge.forge.FORGE_BUS
 
 /**
  * Client-only wiring. Refurbished draws electricity nodes and the wrench-linking
@@ -16,6 +17,8 @@ object ClientSetup {
     fun register(bus: IEventBus) {
         bus.addListener(::onRegisterRenderers)
         bus.addListener(::onClientSetup)
+        // The hover label is a HUD overlay, so it listens on the Forge bus.
+        NameLabelOverlay.register(FORGE_BUS)
     }
 
     private fun onRegisterRenderers(event: EntityRenderersEvent.RegisterRenderers) {

@@ -4,7 +4,7 @@ license="MIT"
 
 [[mods]]
 modId="refurbished_eu"
-version="0.1.0"
+version="${mod_version}"
 displayName="Refurbished EU Bridge"
 authors="vvoleman"
 description='''
@@ -36,7 +36,7 @@ networks directly from an IC2 Classic EU grid.
 [[dependencies."refurbished_eu"]]
     modId="ic2"
     mandatory=true
-    # IC2 Classic resolves version from ${file.jarVersion}, which is Minecraft-
+    # IC2 Classic resolves its version from the jar manifest, which is Minecraft-
     # prefixed (e.g. "1.19.2-2.1.2.1"). A range like "[2.1.2,)" therefore never
     # matches, because 1.19.2-... sorts below 2.1.2.
     versionRange="[1.19.2,)"

@@ -3,11 +3,13 @@ package dev.vvoleman.refurbishedeu
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.gui.components.Button
+import net.minecraft.client.gui.components.EditBox
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
 import net.minecraft.client.renderer.GameRenderer
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.player.Inventory
+import org.lwjgl.glfw.GLFW
 
 class TransformerScreen(
     menu: TransformerMenu,
@@ -15,7 +17,9 @@ class TransformerScreen(
     title: Component
 ) : AbstractContainerScreen<TransformerMenu>(menu, playerInventory, title) {
 
+    private lateinit var nameField: EditBox
     private var toggleButton: Button? = null
+    private var lastSentName: String = ""
 
     init {
         imageWidth = 176
@@ -25,8 +29,20 @@ class TransformerScreen(
 
     override fun init() {
         super.init()
+
+        val existing = currentName()
+        lastSentName = existing
+
+        nameField = EditBox(
+            font, leftPos + 9, topPos + 120, imageWidth - 18, 16,
+            Component.translatable("gui.refurbished_eu.name")
+        )
+        nameField.setMaxLength(ModNetwork.MAX_NAME_LENGTH)
+        nameField.value = existing
+        addRenderableWidget(nameField)
+
         toggleButton = addRenderableWidget(
-            Button(leftPos + 8, topPos + 124, imageWidth - 16, 20, buttonLabel()) {
+            Button(leftPos + 8, topPos + 140, imageWidth - 16, 18, buttonLabel()) {
                 minecraft?.gameMode?.handleInventoryButtonClick(
                     menu.containerId, TransformerMenu.BUTTON_TOGGLE_POWER
                 )
@@ -34,9 +50,55 @@ class TransformerScreen(
         )
     }
 
+    /** The name lives on the block entity, not in ContainerData, which carries ints only. */
+    private fun currentName(): String {
+        val be = minecraft?.level?.getBlockEntity(menu.blockPos)
+        return (be as? TransformerBlockEntity)?.customName.orEmpty()
+    }
+
+    private fun commitName() {
+        val value = nameField.value.trim()
+        if (value == lastSentName) return
+        lastSentName = value
+        ModNetwork.CHANNEL.sendToServer(SetNamePacket(menu.blockPos, value))
+    }
+
     private fun buttonLabel(): Component = Component.translatable(
         if (menu.isEnabled) "gui.refurbished_eu.turn_off" else "gui.refurbished_eu.turn_on"
     )
+
+    override fun containerTick() {
+        super.containerTick()
+        nameField.tick()
+        nameField.setSuggestion(
+            if (nameField.value.isEmpty()) {
+                Component.translatable("gui.refurbished_eu.name_hint").string
+            } else null
+        )
+    }
+
+    override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
+        // Escape must still close, but every other key has to reach the text field
+        // first - otherwise typing "e" closes the screen via the inventory keybind.
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            commitName()
+            minecraft?.player?.closeContainer()
+            return true
+        }
+        if (nameField.isFocused) {
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                commitName()
+                return true
+            }
+            return nameField.keyPressed(keyCode, scanCode, modifiers) || nameField.canConsumeInput()
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers)
+    }
+
+    override fun removed() {
+        commitName()
+        super.removed()
+    }
 
     override fun render(poseStack: PoseStack, mouseX: Int, mouseY: Int, partialTick: Float) {
         renderBackground(poseStack)
@@ -72,14 +134,15 @@ class TransformerScreen(
         y += 12f
         font.draw(
             poseStack,
-            Component.translatable("gui.refurbished_eu.buffer", menu.storedEu, TransformerConfig.BUFFER_EU),
+            Component.translatable("gui.refurbished_eu.buffer", menu.storedEu, menu.bufferMax),
             13f, y, 0x404040
         )
         y += 12f
         font.draw(
             poseStack,
-            Component.translatable("gui.refurbished_eu.connected", menu.connectedCount),
-            13f, y, 0x404040
+            Component.translatable("gui.refurbished_eu.connected", menu.connectedCount, menu.maxDevices),
+            13f, y,
+            if (menu.connectedCount > menu.maxDevices) 0xB03030 else 0x404040
         )
         y += 12f
         font.draw(
@@ -95,7 +158,7 @@ class TransformerScreen(
         )
         font.draw(
             poseStack,
-            Component.translatable("gui.refurbished_eu.tier", TransformerConfig.SINK_TIER),
+            Component.translatable("gui.refurbished_eu.tier", menu.sinkTier),
             13f, 101f, 0x707070
         )
     }

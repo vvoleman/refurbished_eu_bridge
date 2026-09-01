@@ -16,5 +16,10 @@
   "gui.refurbished_eu.turn_off": "Turn Off",
   "subtitles.refurbished_eu.eu_transformer_hum": "Transformer hums",
   "gui.refurbished_eu.name": "Name",
-  "gui.refurbished_eu.name_hint": "Name this transformer"
+  "gui.refurbished_eu.name_hint": "Name this transformer",
+  "gui.refurbished_eu.mode.manual": "Manual",
+  "gui.refurbished_eu.mode.redstone": "Redstone",
+  "gui.refurbished_eu.mode.tooltip": "Switch between manual and redstone control",
+  "gui.refurbished_eu.locked_by_redstone": "Under redstone control",
+  "gui.refurbished_eu.status.off_redstone": "No redstone signal"
 }

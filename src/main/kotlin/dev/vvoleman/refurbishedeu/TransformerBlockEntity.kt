@@ -2,6 +2,7 @@ package dev.vvoleman.refurbishedeu
 
 import com.mrcrayfish.furniture.refurbished.blockentity.ElectricitySourceBlockEntity
 import com.mrcrayfish.furniture.refurbished.blockentity.ILevelAudio
+import com.mrcrayfish.furniture.refurbished.blockentity.IHomeControlDevice
 import com.mrcrayfish.furniture.refurbished.blockentity.INameable
 import com.mrcrayfish.furniture.refurbished.blockentity.IProcessingBlock
 import com.mrcrayfish.furniture.refurbished.blockentity.LightswitchBlockEntity
@@ -47,7 +48,8 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     IEnergySink,
     MenuProvider,
     ILevelAudio,
-    INameable {
+    INameable,
+    IHomeControlDevice {
 
     /** Derived from the block, so a single block entity class serves all tiers. */
     val tier: TransformerTier
@@ -57,13 +59,37 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     var customName: String? = null
         private set
 
-    private var storedEu: Int = 0
+    var storedEu: Int = 0
+        private set
+
     private var netRegistered: Boolean = false
-    private var enabled: Boolean = true
+
+    /** Who owns the on/off state. */
+    var controlMode: ControlMode = ControlMode.MANUAL
+        private set
+
+    /** The hand-set state, remembered across a trip through REDSTONE mode. */
+    private var manualEnabled: Boolean = true
+
+    /**
+     * Cached redstone reading. IC2 calls getRequestedEnergy()/acceptEnergy() from
+     * its own energy net pass rather than from our ticker, so resolving `enabled`
+     * must not mean six neighbour lookups on every call.
+     */
+    private var redstonePowered: Boolean = false
+
+    val enabled: Boolean
+        get() = when (controlMode) {
+            ControlMode.MANUAL -> manualEnabled
+            ControlMode.REDSTONE -> redstonePowered
+        }
 
     /** Last measured counts, refreshed on the load-scan interval. */
-    private var connectedCount: Int = 0
-    private var activeCount: Int = 0
+    var connectedCount: Int = 0
+        private set
+
+    var activeCount: Int = 0
+        private set
 
     /**
      * Synced to the open screen. Note vanilla sends these as shorts, so every
@@ -80,12 +106,18 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
             DATA_BUFFER_MAX -> TransformerConfig.buffer(tier)
             DATA_TIER -> TransformerConfig.sinkTier(tier)
             DATA_MAX_DEVICES -> TransformerConfig.maxDevices(tier)
+            DATA_CONTROL_MODE -> controlMode.ordinal
             else -> 0
         }
 
-        override fun set(index: Int, value: Int) {
-            if (index == DATA_ENABLED) enabled = value != 0
-        }
+        /**
+         * Unused in practice - the client menu is built on a SimpleContainerData,
+         * so sync writes land there rather than here, and every server-side change
+         * goes through the methods below. Left as a no-op rather than a
+         * half-correct setter: DATA_ENABLED reports the *effective* state, which
+         * has no single field to write it back to.
+         */
+        override fun set(index: Int, value: Int) = Unit
 
         override fun getCount(): Int = DATA_SIZE
     }
@@ -149,6 +181,16 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
             netRegistered = true
         }
 
+        // neighborChanged() handles ordinary redstone edits the instant they happen.
+        // This is the safety net for anything that changes the signal without
+        // notifying us, so it can run on the slow interval rather than every tick -
+        // hasNeighborSignal() is six block lookups.
+        if (controlMode == ControlMode.REDSTONE &&
+            level.gameTime % TransformerConfig.loadCheckInterval() == 0L
+        ) {
+            refreshRedstone()
+        }
+
         if (!enabled) {
             if (isNodePowered) setNodePowered(false)
             if (level.gameTime % TransformerConfig.loadCheckInterval() == 0L) {
@@ -192,7 +234,7 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
         setChanged()
     }
 
-    private fun currentDraw(): Int =
+    fun currentDraw(): Int =
         if (!enabled) 0 else TransformerConfig.standbyEu() +
             activeCount * TransformerConfig.euPerActive()
 
@@ -259,14 +301,55 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
         setChanged()
         // ContainerData carries ints only, so the name reaches clients through the
         // block update packet instead.
+        sendUpdate()
+    }
+
+    // ---- Control ------------------------------------------------------------------------
+
+    /**
+     * @return false if the transformer is under redstone control, where the on/off
+     *   state belongs to the world and nothing else may set it.
+     */
+    fun setEnabled(value: Boolean): Boolean {
+        if (controlMode != ControlMode.MANUAL) return false
+        if (manualEnabled == value) return true
+        manualEnabled = value
+        afterEnabledChanged()
+        return true
+    }
+
+    fun togglePower(): Boolean = setEnabled(!enabled)
+
+    fun cycleControlMode() {
+        setControlMode(controlMode.next())
+    }
+
+    fun setControlMode(mode: ControlMode) {
+        if (controlMode == mode) return
+        controlMode = mode
+        // Read the world immediately so the GUI doesn't show a stale state for the
+        // tick between the switch and the next serverTick().
+        if (mode == ControlMode.REDSTONE) refreshRedstone()
+        afterEnabledChanged()
+    }
+
+    private fun refreshRedstone() {
         val level = this.level ?: return
-        if (!level.isClientSide) {
-            level.sendBlockUpdated(worldPosition, blockState, blockState, Block.UPDATE_ALL)
+        val signal = level.hasNeighborSignal(worldPosition)
+        if (signal != redstonePowered) {
+            redstonePowered = signal
+            afterEnabledChanged()
         }
     }
 
-    fun togglePower() {
-        enabled = !enabled
+    /** Called by the block whenever a neighbouring block updates. */
+    fun onNeighbourChanged() {
+        val level = this.level ?: return
+        if (level.isClientSide) return
+        if (controlMode == ControlMode.REDSTONE) refreshRedstone()
+    }
+
+    private fun afterEnabledChanged() {
         if (!enabled && isNodePowered) setNodePowered(false)
         // Mirrors the vanilla generator: switching back on is also a way out of
         // an overload, provided the network is actually within limits again.
@@ -277,7 +360,34 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
             }
         }
         setChanged()
+        sendUpdate()
     }
+
+    // ---- Refurbished: Home Control app ---------------------------------------------------
+
+    /**
+     * Makes the transformer appear in the Computer's Home Control app. Their
+     * HomeControl.findDevices() walks the electricity network and keeps any *node*
+     * implementing this interface - and we are the node, so nothing else is needed.
+     *
+     * Under redstone control the two setters go quiet. Home Control keeps listing
+     * us and keeps showing the live state; it just can't drive it, including from
+     * its "all on"/"all off" buttons.
+     */
+    override fun getDevicePos(): BlockPos = worldPosition
+
+    override fun isDeviceEnabled(): Boolean = enabled
+
+    override fun toggleDeviceState() {
+        togglePower()
+    }
+
+    override fun setDeviceState(state: Boolean) {
+        setEnabled(state)
+    }
+
+    override fun getDeviceName(): Component =
+        customName?.let { Component.literal(it) } ?: blockState.block.name
 
     // ---- Audio --------------------------------------------------------------------------
 
@@ -344,9 +454,24 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
 
     // ---- Persistence -------------------------------------------------------------------
 
+    /**
+     * Name and control state, shared by disk saves and the block update packet.
+     *
+     * Both halves of the on/off state travel, not just the effective result:
+     * Refurbished's Home Control app renders from the *client's* block entity and
+     * calls isDeviceEnabled() on it, so the client has to be able to work the
+     * answer out the same way the server does.
+     */
+    private fun writeControlState(tag: CompoundTag) {
+        tag.putBoolean("Enabled", manualEnabled)
+        tag.putBoolean("Redstone", redstonePowered)
+        tag.putString("ControlMode", controlMode.id)
+        customName?.let { tag.putString(TAG_CUSTOM_NAME, it) }
+    }
+
     override fun getUpdateTag(): CompoundTag {
         val tag = super.getUpdateTag()
-        customName?.let { tag.putString(TAG_CUSTOM_NAME, it) }
+        writeControlState(tag)
         return tag
     }
 
@@ -356,14 +481,24 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
             tag.getString(TAG_CUSTOM_NAME).ifEmpty { null }
         } else null
         storedEu = tag.getInt("StoredEu")
-        enabled = !tag.contains("Enabled") || tag.getBoolean("Enabled")
+        manualEnabled = !tag.contains("Enabled") || tag.getBoolean("Enabled")
+        redstonePowered = tag.getBoolean("Redstone")
+        controlMode = if (tag.contains("ControlMode")) {
+            ControlMode.byId(tag.getString("ControlMode")) ?: ControlMode.MANUAL
+        } else ControlMode.MANUAL
     }
 
     override fun saveAdditional(tag: CompoundTag) {
         super.saveAdditional(tag)
         tag.putInt("StoredEu", storedEu)
-        tag.putBoolean("Enabled", enabled)
-        customName?.let { tag.putString(TAG_CUSTOM_NAME, it) }
+        writeControlState(tag)
+    }
+
+    /** ContainerData reaches an open screen only; everything else needs this. */
+    private fun sendUpdate() {
+        val level = this.level ?: return
+        if (level.isClientSide) return
+        level.sendBlockUpdated(worldPosition, blockState, blockState, Block.UPDATE_ALL)
     }
 
     companion object {
@@ -378,6 +513,7 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
         const val DATA_BUFFER_MAX = 6
         const val DATA_TIER = 7
         const val DATA_MAX_DEVICES = 8
-        const val DATA_SIZE = 9
+        const val DATA_CONTROL_MODE = 9
+        const val DATA_SIZE = 10
     }
 }

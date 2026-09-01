@@ -53,6 +53,25 @@ class TransformerBlock(
         }
     }
 
+    /**
+     * Redstone-controlled transformers react on the edit rather than waiting for
+     * their next tick. serverTick() re-reads too, so this is a latency fix, not
+     * the only path.
+     */
+    override fun neighborChanged(
+        state: BlockState,
+        level: Level,
+        pos: BlockPos,
+        block: Block,
+        fromPos: BlockPos,
+        isMoving: Boolean
+    ) {
+        super.neighborChanged(state, level, pos, block, fromPos, isMoving)
+        if (level.isClientSide) return
+        val be = level.getBlockEntity(pos)
+        if (be is TransformerBlockEntity) be.onNeighbourChanged()
+    }
+
     override fun use(
         state: BlockState,
         level: Level,

@@ -19,6 +19,7 @@ class TransformerScreen(
 
     private lateinit var nameField: EditBox
     private var toggleButton: Button? = null
+    private var modeButton: Button? = null
     private var lastSentName: String = ""
 
     init {
@@ -41,10 +42,19 @@ class TransformerScreen(
         nameField.value = existing
         addRenderableWidget(nameField)
 
+        // Two buttons on one row: power on the left, control mode on the right.
         toggleButton = addRenderableWidget(
-            Button(leftPos + 8, topPos + 140, imageWidth - 16, 18, buttonLabel()) {
+            Button(leftPos + POWER_X, topPos + BUTTON_Y, POWER_W, BUTTON_H, buttonLabel()) {
                 minecraft?.gameMode?.handleInventoryButtonClick(
                     menu.containerId, TransformerMenu.BUTTON_TOGGLE_POWER
+                )
+            }
+        )
+
+        modeButton = addRenderableWidget(
+            Button(leftPos + MODE_X, topPos + BUTTON_Y, MODE_W, BUTTON_H, modeLabel()) {
+                minecraft?.gameMode?.handleInventoryButtonClick(
+                    menu.containerId, TransformerMenu.BUTTON_CYCLE_MODE
                 )
             }
         )
@@ -66,6 +76,8 @@ class TransformerScreen(
     private fun buttonLabel(): Component = Component.translatable(
         if (menu.isEnabled) "gui.refurbished_eu.turn_off" else "gui.refurbished_eu.turn_on"
     )
+
+    private fun modeLabel(): Component = Component.translatable(menu.controlMode.translationKey)
 
     override fun containerTick() {
         super.containerTick()
@@ -102,10 +114,44 @@ class TransformerScreen(
 
     override fun render(poseStack: PoseStack, mouseX: Int, mouseY: Int, partialTick: Float) {
         renderBackground(poseStack)
-        toggleButton?.message = buttonLabel()
+        toggleButton?.let {
+            it.message = buttonLabel()
+            // Under redstone control the world owns the state; the server refuses
+            // the packet anyway, this just stops the button from lying.
+            it.active = menu.controlMode == ControlMode.MANUAL
+        }
+        modeButton?.message = modeLabel()
         super.render(poseStack, mouseX, mouseY, partialTick)
         renderTooltip(poseStack, mouseX, mouseY)
+        renderButtonHints(poseStack, mouseX, mouseY)
     }
+
+    /**
+     * Hover text for the two buttons. Done by hand rather than through Button's
+     * OnTooltip because a disabled button never reports itself as hovered, and
+     * explaining *why* the power button is disabled is the whole point.
+     */
+    private fun renderButtonHints(poseStack: PoseStack, mouseX: Int, mouseY: Int) {
+        if (menu.controlMode != ControlMode.MANUAL &&
+            isOver(mouseX, mouseY, POWER_X, POWER_W)
+        ) {
+            renderTooltip(
+                poseStack,
+                Component.translatable("gui.refurbished_eu.locked_by_redstone"),
+                mouseX, mouseY
+            )
+        } else if (isOver(mouseX, mouseY, MODE_X, MODE_W)) {
+            renderTooltip(
+                poseStack,
+                Component.translatable("gui.refurbished_eu.mode.tooltip"),
+                mouseX, mouseY
+            )
+        }
+    }
+
+    private fun isOver(mouseX: Int, mouseY: Int, x: Int, width: Int): Boolean =
+        mouseX >= leftPos + x && mouseX < leftPos + x + width &&
+            mouseY >= topPos + BUTTON_Y && mouseY < topPos + BUTTON_Y + BUTTON_H
 
     override fun renderBg(poseStack: PoseStack, partialTick: Float, mouseX: Int, mouseY: Int) {
         RenderSystem.setShader(GameRenderer::getPositionTexShader)
@@ -119,6 +165,9 @@ class TransformerScreen(
 
         val status: Component = when {
             menu.isOverloaded -> Component.translatable("gui.refurbished_eu.status.overloaded")
+            // "Switched off" would be misleading when nobody switched anything.
+            !menu.isEnabled && menu.controlMode == ControlMode.REDSTONE ->
+                Component.translatable("gui.refurbished_eu.status.off_redstone")
             !menu.isEnabled -> Component.translatable("gui.refurbished_eu.status.off")
             menu.storedEu <= 0 -> Component.translatable("gui.refurbished_eu.status.no_power")
             else -> Component.translatable("gui.refurbished_eu.status.running")
@@ -165,5 +214,13 @@ class TransformerScreen(
 
     companion object {
         private val TEXTURE = ResourceLocation("refurbished_eu", "textures/gui/eu_transformer.png")
+
+        // Button row, relative to the panel's top-left corner.
+        private const val BUTTON_Y = 140
+        private const val BUTTON_H = 18
+        private const val POWER_X = 8
+        private const val POWER_W = 104
+        private const val MODE_X = 116
+        private const val MODE_W = 52
     }
 }

@@ -40,13 +40,21 @@ class TransformerMenu(
     val bufferMax: Int get() = data[TransformerBlockEntity.DATA_BUFFER_MAX]
     val sinkTier: Int get() = data[TransformerBlockEntity.DATA_TIER]
     val maxDevices: Int get() = data[TransformerBlockEntity.DATA_MAX_DEVICES]
+    val controlMode: ControlMode
+        get() = ControlMode.byOrdinal(data[TransformerBlockEntity.DATA_CONTROL_MODE])
 
-    override fun clickMenuButton(player: Player, id: Int): Boolean {
-        if (id == BUTTON_TOGGLE_POWER) {
+    override fun clickMenuButton(player: Player, id: Int): Boolean = when (id) {
+        BUTTON_TOGGLE_POWER -> {
+            // Refused outright under redstone control - the client greys the button
+            // out, but a hand-crafted packet must not get past it either.
             blockEntity?.togglePower()
-            return true
+            true
         }
-        return false
+        BUTTON_CYCLE_MODE -> {
+            blockEntity?.cycleControlMode()
+            true
+        }
+        else -> false
     }
 
     override fun stillValid(player: Player): Boolean {
@@ -61,5 +69,6 @@ class TransformerMenu(
 
     companion object {
         const val BUTTON_TOGGLE_POWER = 0
+        const val BUTTON_CYCLE_MODE = 1
     }
 }

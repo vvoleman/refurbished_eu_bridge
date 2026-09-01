@@ -60,6 +60,10 @@ dependencies {
     compileOnly fg.deobf('packmods:refurbished_furniture:1.0.9')
     compileOnly fg.deobf('packmods:framework:0.7.12')
     compileOnly fg.deobf('packmods:ic2classic:2.1.2.1')
+
+    // Optional at runtime: the CC: Tweaked peripheral is registered behind a
+    // ModList.isLoaded("computercraft") guard, so the mod still loads without it.
+    compileOnly fg.deobf('packmods:cctweaked:1.101.4')
 }
 
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {

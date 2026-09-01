@@ -16,9 +16,11 @@ import net.minecraft.world.level.material.Material
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.common.extensions.IForgeMenuType
 import net.minecraftforge.fml.DistExecutor
+import net.minecraftforge.fml.ModList
 import net.minecraftforge.fml.ModLoadingContext
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.config.ModConfig
+import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent
 import net.minecraftforge.registries.DeferredRegister
 import net.minecraftforge.registries.ForgeRegistries
 import net.minecraftforge.registries.RegistryObject
@@ -93,8 +95,21 @@ object RefurbishedEuBridge {
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, TransformerConfig.SPEC)
         ModNetwork.register()
 
+        MOD_BUS.addListener(::commonSetup)
+
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
             Runnable { ClientSetup.register(MOD_BUS) }
+        }
+    }
+
+    /**
+     * CC: Tweaked is an optional dependency. Naming CcCompat only inside this
+     * branch keeps its class - and every dan200 type it references - off the
+     * loader's path when ComputerCraft isn't installed.
+     */
+    private fun commonSetup(event: FMLCommonSetupEvent) {
+        if (ModList.get().isLoaded("computercraft")) {
+            event.enqueueWork { CcCompat.register() }
         }
     }
 

@@ -86,13 +86,27 @@ object TransformerHudOverlay {
             .append(Component.literal(" "))
             .append(devices)
 
-        drawLabel(minecraft, event.poseStack, label, status)
+        val redstoneLabel = if (blockEntity.controlMode == ControlMode.REDSTONE) {
+            Component.translatable("hud.refurbished_eu.redstone_mode")
+                .withStyle(ChatFormatting.RED)
+        } else null
+
+        drawLabel(minecraft, event.poseStack, label, status, redstoneLabel)
     }
 
-    private fun drawLabel(minecraft: Minecraft, poseStack: PoseStack, text: Component, status: Status) {
+    private fun drawLabel(
+        minecraft: Minecraft,
+        poseStack: PoseStack,
+        text: Component,
+        status: Status,
+        subtitle: Component? = null
+    ) {
         val font = minecraft.font
-        val boxWidth = PADDING + ICON_SIZE + PADDING + font.width(text) + PADDING
-        val boxHeight = PADDING + LINE_HEIGHT + PADDING
+        val mainWidth = PADDING + ICON_SIZE + PADDING + font.width(text) + PADDING
+        val subtitleWidth = if (subtitle != null) PADDING + font.width(subtitle) + PADDING else 0
+        val boxWidth = maxOf(mainWidth, subtitleWidth)
+        val lineCount = if (subtitle != null) 2 else 1
+        val boxHeight = PADDING + lineCount * LINE_HEIGHT + (lineCount - 1) * PADDING + PADDING
 
         val x = (minecraft.window.guiScaledWidth - boxWidth) / 2
         val y = (minecraft.window.guiScaledHeight - boxHeight) / 2 + VERTICAL_OFFSET
@@ -119,5 +133,13 @@ object TransformerHudOverlay {
             (x + PADDING + ICON_SIZE + PADDING).toFloat(), (y + PADDING).toFloat(),
             0xFFFFFF
         )
+
+        if (subtitle != null) {
+            font.drawShadow(
+                poseStack, subtitle,
+                (x + PADDING).toFloat(), (y + PADDING + LINE_HEIGHT + PADDING).toFloat(),
+                0xFFFFFF
+            )
+        }
     }
 }

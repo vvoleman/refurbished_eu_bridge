@@ -1,6 +1,7 @@
 package dev.vvoleman.refurbishedeu
 
 import com.mojang.datafixers.types.Type
+import dev.vvoleman.refurbishedeu.mail.LetterItem
 import dev.vvoleman.refurbishedeu.mail.MailmanConfig
 import net.minecraft.core.BlockPos
 import net.minecraft.resources.ResourceLocation
@@ -58,6 +59,10 @@ object RefurbishedEuBridge {
                 )
             }
         }
+
+    val LETTER: RegistryObject<Item> = ITEMS.register("letter") {
+        LetterItem(Item.Properties().stacksTo(16).tab(CreativeModeTab.TAB_MISC))
+    }
 
     /** One block entity type shared by all three variants; the tier comes from the block. */
     val EU_TRANSFORMER_BE: RegistryObject<BlockEntityType<TransformerBlockEntity>> =

@@ -4,3 +4,4 @@ run/
 localmaven/
 original_mods/
 .idea/
+.env

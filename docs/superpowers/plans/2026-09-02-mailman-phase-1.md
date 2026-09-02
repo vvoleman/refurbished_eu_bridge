@@ -2035,9 +2035,12 @@ Add to `MailRouteService`:
             val target = addressOf(stack) ?: continue
             if (target.equals(origin.name, ignoreCase = true)) continue
 
-            val destination = MailboxIndex.byName(cachedMailboxes, target, origin.pos) ?: continue
-            // Same dimension only: walking between dimensions is meaningless.
-            if (destination.level != origin.level) continue
+            // Restrict to this dimension BEFORE resolving the name. byName picks the
+            // nearest match and compares raw block positions, so a same-named mailbox in
+            // another dimension could otherwise win on a meaningless coordinate distance
+            // and the mail would be dropped here - even though a valid local one exists.
+            val local = cachedMailboxes.filter { it.level == origin.level }
+            val destination = MailboxIndex.byName(local, target, origin.pos) ?: continue
             if (destination.id == origin.id) continue
 
             val route = MailRoute(

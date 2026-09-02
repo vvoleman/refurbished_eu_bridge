@@ -730,7 +730,7 @@ git commit -m "Add dead-reckoning travel arithmetic"
 **Interfaces:**
 - Consumes: nothing.
 - Produces: `MailRoute` with fields `id, stack, originId, targetId, level, pos, state, entity, lastDistance, stalledTicks`;
-  `enum class RouteState { TRAVELLING, DELIVERING, RETURNING }`;
+  `enum class RouteState { TRAVELLING, RETURNING }`;
   `MailRoute.save(): CompoundTag` and `MailRoute.load(tag: CompoundTag): MailRoute?`.
   Task 12 owns a collection of these.
 
@@ -825,7 +825,7 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
-enum class RouteState { TRAVELLING, DELIVERING, RETURNING }
+enum class RouteState { TRAVELLING, RETURNING }
 
 /**
  * One delivery in flight.
@@ -1042,13 +1042,9 @@ git commit -m "Add mailman server config"
 - Produces: `RefurbishedEuBridge.LETTER: RegistryObject<Item>`. Task 13's sweep
   matches on it; Task 14's README documents it.
 
-Addressing UI is out of scope for this task — the letter is addressed with an
-anvil-style rename in Task 9's screen work is *not* how this works. Here, a
-letter is addressed by right-clicking with it while sneaking, which opens a
-sign-style text entry. To keep this task self-contained and shippable, Step 1
-implements addressing via the item's display name: a letter named `Town Hall`
-in an anvil is addressed to `Town Hall`. That needs no new screen, no packet,
-and no client code.
+A letter is addressed by its display name: name it `Town Hall` in an anvil and
+it is addressed to the mailbox called `Town Hall`. That needs no new screen, no
+packet and no client code, which is why this task is one file plus assets.
 
 - [ ] **Step 1: Implement the item**
 
@@ -1485,17 +1481,13 @@ class MailmanEntity(type: EntityType<out PathfinderMob>, level: Level) : Pathfin
     var routeId: UUID? = null
     var carried: ItemStack = ItemStack.EMPTY
 
-    init {
-        // Its lifecycle is the route's; vanilla despawn rules must not touch it.
-        isPersistenceRequired
-    }
-
     override fun registerGoals() {
         goalSelector.addGoal(0, FloatGoal(this))
         goalSelector.addGoal(9, LookAtPlayerGoal(this, Player::class.java, 6.0f))
         // Travel and delivery goals are added in Task 11.
     }
 
+    /** Its lifecycle belongs to the route, so vanilla despawn rules must not touch it. */
     override fun removeWhenFarAway(distance: Double): Boolean = false
 
     /**
@@ -1610,9 +1602,10 @@ takes no damage, and survives a reload.
 **Interfaces:**
 - Consumes: `MailmanEntity` (Task 10), `MailboxRef` (Task 3).
 - Produces: `TravelToTargetGoal(mob: MailmanEntity, targetOf: (MailmanEntity) -> BlockPos?)`
-  and `DeliverMailGoal(mob: MailmanEntity, onArrive: (MailmanEntity) -> Unit)`.
-  Task 12 supplies both lambdas, which is how the goals stay free of any
-  dependency on the route service.
+  and `DeliverMailGoal(mob: MailmanEntity, targetOf: (MailmanEntity) -> BlockPos?)`.
+  Both read the destination through a lambda, which keeps the goals free of any
+  dependency on the route service. Neither delivers — MailRouteService owns
+  arrival, so dead-reckoned and walked routes behave identically.
 
 - [ ] **Step 1: Implement the goals**
 
@@ -1669,11 +1662,16 @@ class TravelToTargetGoal(
     }
 }
 
-/** Fires once the mailman is standing at its destination. */
+/**
+ * Stops the mailman once it is standing at its destination.
+ *
+ * It does NOT deliver. MailRouteService owns arrival, because a dead-reckoned
+ * route has no entity to notice it arrived and delivery must work identically
+ * either way. Two arrival mechanisms would be two things to keep in agreement.
+ */
 class DeliverMailGoal(
     private val mob: MailmanEntity,
     private val targetOf: (MailmanEntity) -> BlockPos?,
-    private val onArrive: (MailmanEntity) -> Unit,
 ) : Goal() {
 
     override fun canUse(): Boolean {
@@ -1683,7 +1681,6 @@ class DeliverMailGoal(
 
     override fun start() {
         mob.navigation.stop()
-        onArrive(mob)
     }
 }
 ```
@@ -1695,13 +1692,12 @@ class DeliverMailGoal(
 ```kotlin
     /** Set by MailRouteService when the mailman is materialised. */
     var destination: BlockPos? = null
-    var onArrive: ((MailmanEntity) -> Unit)? = null
 ```
 
 and replace the `registerGoals` comment with:
 
 ```kotlin
-        goalSelector.addGoal(1, DeliverMailGoal(this, { it.destination }, { m -> m.onArrive?.invoke(m) }))
+        goalSelector.addGoal(1, DeliverMailGoal(this) { it.destination })
         goalSelector.addGoal(2, TravelToTargetGoal(this) { it.destination })
 ```
 
@@ -1859,7 +1855,6 @@ class MailRouteService : SavedData() {
         mob.routeId = route.id
         mob.carried = route.stack
         mob.destination = destination
-        mob.onArrive = { }
         level.addFreshEntity(mob)
         route.entity = mob.uuid
         setDirty()

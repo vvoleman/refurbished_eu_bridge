@@ -23,6 +23,5 @@
   "gui.refurbished_eu.mode.tooltip": "Switch between manual and redstone control",
   "gui.refurbished_eu.locked_by_redstone": "Under redstone control",
   "gui.refurbished_eu.status.off_redstone": "No redstone signal",
-  "hud.refurbished_eu.devices": "%s/%s",
-  "hud.refurbished_eu.redstone_mode": "Redstone control"
+  "hud.refurbished_eu.devices": "%s/%s"
 }

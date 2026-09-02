@@ -1,6 +1,7 @@
 package dev.vvoleman.refurbishedeu
 
 import com.mojang.datafixers.types.Type
+import dev.vvoleman.refurbishedeu.mail.MailmanConfig
 import net.minecraft.core.BlockPos
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.sounds.SoundEvent
@@ -102,6 +103,7 @@ object RefurbishedEuBridge {
         SOUNDS.register(MOD_BUS)
 
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, TransformerConfig.SPEC)
+        ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, MailmanConfig.SPEC, "refurbished_eu-mailman-server.toml")
         ModNetwork.register()
 
         MOD_BUS.addListener(::commonSetup)

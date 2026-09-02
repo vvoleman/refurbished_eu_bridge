@@ -515,16 +515,30 @@ nearest to the origin, per the spec.
 ```kotlin
 package dev.vvoleman.refurbishedeu.mail
 
+import net.minecraft.DetectedVersion
+import net.minecraft.SharedConstants
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Registry
 import net.minecraft.resources.ResourceKey
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.Bootstrap
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import java.util.UUID
 
 class MailboxLookupTest {
+
+    companion object {
+        // Touching Registry.DIMENSION_REGISTRY throws "Not bootstrapped" without this.
+        @JvmStatic
+        @BeforeAll
+        fun bootstrap() {
+            SharedConstants.setVersion(DetectedVersion.BUILT_IN)
+            Bootstrap.bootStrap()
+        }
+    }
 
     private val overworld =
         ResourceKey.create(Registry.DIMENSION_REGISTRY, ResourceLocation("minecraft:overworld"))

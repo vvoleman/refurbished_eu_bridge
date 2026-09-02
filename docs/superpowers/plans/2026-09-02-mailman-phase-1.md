@@ -10,6 +10,49 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-02-mailman-design.md` — read it before Task 1. The plan argues from the spec; where they disagree, the spec wins.
 
+## Execution status (updated 2026-09-03)
+
+**Tasks 1-9 complete and reviewed clean. Tasks 10-14 remain.** Branch `mailman`, off
+`main` @ 816c2be. HEAD at handoff: `a573d9b`. **The branch has never been pushed.**
+
+Verified at handoff: `./gradlew build --offline` succeeds and `./gradlew test --offline
+--rerun-tasks` gives **22 tests, 0 failures, 0 errors** across 6 test classes. That means
+the logic layer is correct and everything compiles. **Nothing has been run in a game** —
+see Verification at the foot of this plan.
+
+| Task | Commit | Notes |
+|---|---|---|
+| 1 Test harness | `3782494` | first tests in this repo; ItemStack works in tests |
+| 2 MailAddress | `08b3737` | |
+| 3 Mailbox registry parse | `8263cb2` | |
+| 4 Lookup by name | `11d7bd6` | |
+| 5 Travel arithmetic | `43fcae3` | |
+| 6 MailRoute NBT | `326d1e7` | |
+| 7 Config | `6c4ed4c` | |
+| 8 Letter item | `07ac6f8` | no review findings at any severity |
+| 9 Parcel + screen | `0e38dc2`, `a573d9b` | one Critical found and fixed — see below |
+| 10-14 | — | not started; briefs for 10 and 11 already extracted |
+
+Four defects in this plan were found and corrected before their tasks ran (commit
+`4cbca1d`), and two more during execution (`e3b3782`, `0ffefeb`). The plan text below
+already incorporates all six. The two worth knowing:
+
+- **Task 13 must filter mailboxes to the origin's dimension BEFORE calling `byName`**
+  (`0ffefeb`). `byName` compares raw block positions, so a same-named mailbox in another
+  dimension could win on a meaningless distance and the mail would then be silently
+  dropped by the same-dimension check.
+- **Task 9's `ParcelMenu` originally let the parcel be placed inside itself and
+  destroyed.** The player's hotbar was added as ordinary slots, but the parcel being
+  edited lives in the hotbar. Fixed in `a573d9b` with a non-interactive `HeldParcelSlot`
+  plus a `clicked()` override, because `ClickType.SWAP` bypasses `Slot.mayPickup`
+  entirely — vanilla's `doClick` reads and writes the real inventory by button index.
+
+A full execution ledger, including every ruling and nine deferred minor findings for the
+final review, is at `.superpowers/sdd/2026-09-02-mailman-phase-1/progress.md`. That
+directory is git-ignored scratch — if it is lost, this section and `git log` are the record.
+
+---
+
 ## Global Constraints
 
 - **Build command is `JAVA_HOME=/home/vvoleman/.jdks/jdk-17.0.20.1+1 ./gradlew build --offline`.** There is no `java` on `PATH`; the wrapper reads `org.gradle.java.home` too late to help. Dependencies are cached in `localmaven/`, so `--offline` works.

@@ -30,8 +30,12 @@ own accounting; the counter matches it so the displayed maximum is a number you
 can actually reach without overloading.
 
 Each transformer has a GUI showing buffer, connected and active device counts,
-current draw and accepted voltage tier. You can give it a name, which appears as
-a hover label in the world and everywhere else the transformer is listed.
+current draw and accepted voltage tier. You can give it a name, which appears
+everywhere the transformer is listed.
+
+Looking at a transformer also puts a label under the crosshair, styled after
+Refurbished's own "Missing power" indicator: a status bolt — green running, grey
+off, red overloaded — then the circuit name and its device load, `3/8`.
 
 ### Control
 

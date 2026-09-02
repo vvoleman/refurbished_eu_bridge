@@ -23,6 +23,7 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.inventory.ContainerData
+import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.properties.BlockStateProperties
@@ -90,6 +91,14 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
 
     var activeCount: Int = 0
         private set
+
+    /**
+     * What clients were last told, so the hover label can stay live without a
+     * block update packet every tick. Kept in step by load(), which is the same
+     * data clients receive in the update tag.
+     */
+    private var syncedConnectedCount: Int = 0
+    private var syncedOverloaded: Boolean = false
 
     /**
      * Synced to the open screen. Note vanilla sends these as shorts, so every
@@ -175,7 +184,13 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     fun serverTick() {
         val level = this.level ?: return
         if (level.isClientSide) return
+        tickServer(level)
+        // Split in two so the many early returns inside tickServer() can't skip
+        // the sync check.
+        syncHudStateIfChanged()
+    }
 
+    private fun tickServer(level: Level) {
         if (!netRegistered) {
             EnergyNet.INSTANCE.addTile(this)
             netRegistered = true
@@ -237,6 +252,25 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     fun currentDraw(): Int =
         if (!enabled) 0 else TransformerConfig.standbyEu() +
             activeCount * TransformerConfig.euPerActive()
+
+    /**
+     * Push a block update whenever something the hover label draws has moved.
+     *
+     * The label reads the *client's* block entity, and nothing else keeps these
+     * two fields fresh there: connectedCount never left the server, and while
+     * `Overloaded` does ride along in the update tag, both the flag being set
+     * (Refurbished's earlyNodeTick) and cleared (tickServer, above) only ever call
+     * setChanged(), which marks the chunk dirty without telling anyone.
+     *
+     * Both only move on the load-scan interval, so this is a handful of packets a
+     * minute at worst, and none at all on a settled network.
+     */
+    private fun syncHudStateIfChanged() {
+        if (connectedCount == syncedConnectedCount && isNodeOverloaded == syncedOverloaded) return
+        syncedConnectedCount = connectedCount
+        syncedOverloaded = isNodeOverloaded
+        sendUpdate()
+    }
 
     /**
      * Every node physically linked to us that occupies a slot in the network cap,
@@ -464,23 +498,29 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     // ---- Persistence -------------------------------------------------------------------
 
     /**
-     * Name and control state, shared by disk saves and the block update packet.
+     * Everything a client needs about us, shared by disk saves and the block
+     * update packet.
      *
      * Both halves of the on/off state travel, not just the effective result:
      * Refurbished's Home Control app renders from the *client's* block entity and
      * calls isDeviceEnabled() on it, so the client has to be able to work the
      * answer out the same way the server does.
+     *
+     * The device count is here rather than in ContainerData alone because the
+     * hover label draws with no menu open. Saving it to disk too is what stops a
+     * freshly loaded chunk reading 0/8 for the tick or two before the first scan.
      */
-    private fun writeControlState(tag: CompoundTag) {
+    private fun writeSyncedState(tag: CompoundTag) {
         tag.putBoolean("Enabled", manualEnabled)
         tag.putBoolean("Redstone", redstonePowered)
         tag.putString("ControlMode", controlMode.id)
+        tag.putInt(TAG_CONNECTED, connectedCount)
         customName?.let { tag.putString(TAG_CUSTOM_NAME, it) }
     }
 
     override fun getUpdateTag(): CompoundTag {
         val tag = super.getUpdateTag()
-        writeControlState(tag)
+        writeSyncedState(tag)
         return tag
     }
 
@@ -490,6 +530,9 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
             tag.getString(TAG_CUSTOM_NAME).ifEmpty { null }
         } else null
         storedEu = tag.getInt("StoredEu")
+        connectedCount = tag.getInt(TAG_CONNECTED)
+        syncedConnectedCount = connectedCount
+        syncedOverloaded = isNodeOverloaded
         manualEnabled = !tag.contains("Enabled") || tag.getBoolean("Enabled")
         redstonePowered = tag.getBoolean("Redstone")
         controlMode = if (tag.contains("ControlMode")) {
@@ -500,7 +543,7 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     override fun saveAdditional(tag: CompoundTag) {
         super.saveAdditional(tag)
         tag.putInt("StoredEu", storedEu)
-        writeControlState(tag)
+        writeSyncedState(tag)
     }
 
     /** ContainerData reaches an open screen only; everything else needs this. */
@@ -512,6 +555,7 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
 
     companion object {
         const val TAG_CUSTOM_NAME = "CustomName"
+        const val TAG_CONNECTED = "Connected"
 
         const val DATA_STORED_EU = 0
         const val DATA_CONNECTED = 1

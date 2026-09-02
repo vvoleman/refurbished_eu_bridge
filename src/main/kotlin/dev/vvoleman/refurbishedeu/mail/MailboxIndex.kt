@@ -40,4 +40,20 @@ object MailboxIndex {
             name = name,
         )
     }
+
+    /** Only named mailboxes can be addressed; the rest are invisible to the mail system. */
+    fun named(refs: List<MailboxRef>): List<MailboxRef> = refs.filter { it.name != null }
+
+    /**
+     * Refurbished allows duplicate mailbox names, so this can be genuinely
+     * ambiguous. Nearest to the sender wins, which is both predictable and
+     * usually what was meant.
+     */
+    fun byName(refs: List<MailboxRef>, name: String, from: BlockPos): MailboxRef? {
+        val wanted = name.trim().lowercase()
+        if (wanted.isEmpty()) return null
+        return named(refs)
+            .filter { it.name!!.trim().lowercase() == wanted }
+            .minByOrNull { it.pos.distSqr(from) }
+    }
 }

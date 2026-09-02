@@ -15,6 +15,7 @@
   "gui.refurbished_eu.turn_on": "Turn On",
   "gui.refurbished_eu.turn_off": "Turn Off",
   "subtitles.refurbished_eu.eu_transformer_hum": "Transformer hums",
+  "subtitles.refurbished_eu.eu_transformer_overload": "Transformer grinds",
   "gui.refurbished_eu.name": "Name",
   "gui.refurbished_eu.name_hint": "Name this transformer",
   "gui.refurbished_eu.mode.manual": "Manual",

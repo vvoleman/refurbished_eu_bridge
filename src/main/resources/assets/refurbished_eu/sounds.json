@@ -8,5 +8,15 @@
         "stream": false
       }
     ]
+  },
+  "eu_transformer_overload": {
+    "category": "block",
+    "subtitle": "subtitles.refurbished_eu.eu_transformer_overload",
+    "sounds": [
+      {
+        "name": "refurbished_furniture:block/recycle_bin/engine",
+        "stream": false
+      }
+    ]
   }
 }

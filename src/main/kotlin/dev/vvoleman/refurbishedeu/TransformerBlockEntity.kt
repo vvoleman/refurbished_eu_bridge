@@ -13,6 +13,7 @@ import ic2.api.energy.tile.IEnergyEmitter
 import ic2.api.energy.tile.IEnergySink
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.chat.Component
 import net.minecraft.sounds.SoundEvent
@@ -432,6 +433,22 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     override fun getDeviceName(): Component =
         customName?.let { Component.literal(it) } ?: blockState.block.name
 
+    // ---- Fault feedback -------------------------------------------------------------------
+
+    /**
+     * True while the block should be visibly and audibly complaining.
+     *
+     * The `enabled` half matters: tickServer() returns early on a switched-off
+     * transformer without ever re-checking the overload flag, so the flag outlives
+     * the switch. Without this a transformer you had already switched off would go
+     * on grinding and smoking for good.
+     *
+     * Client-side this reads the flag out of the update tag, which is the same
+     * sync the hover label's red bolt runs on - no extra packets for either.
+     */
+    private val faulted: Boolean
+        get() = isNodeOverloaded && enabled
+
     // ---- Audio --------------------------------------------------------------------------
 
     /**
@@ -441,20 +458,67 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
      */
     fun clientTick() {
         AudioManager.get().playLevelAudio(this)
+        if (faulted) spawnFaultParticles()
     }
 
-    override fun getSound(): SoundEvent = RefurbishedEuBridge.EU_TRANSFORMER_HUM.get()
+    /**
+     * Purely cosmetic and purely client-side - the ticker this runs on only exists
+     * on the client, and every input is already there.
+     */
+    private fun spawnFaultParticles() {
+        val level = this.level ?: return
+        val random = level.random
+        // A puff every tick reads as a fire. Every fourth reads as a fault.
+        if (random.nextInt(SMOKE_INTERVAL) == 0) {
+            level.addParticle(
+                ParticleTypes.LARGE_SMOKE,
+                worldPosition.x + 0.5 + (random.nextDouble() - 0.5) * 0.5,
+                worldPosition.y + 1.05,
+                worldPosition.z + 0.5 + (random.nextDouble() - 0.5) * 0.5,
+                0.0, 0.0, 0.0
+            )
+        }
+        // The lightning rod's particle, and the reason this reads as electrical
+        // rather than as something merely burning.
+        if (random.nextInt(SPARK_INTERVAL) == 0) {
+            level.addParticle(
+                ParticleTypes.ELECTRIC_SPARK,
+                worldPosition.x + 0.5 + (random.nextDouble() - 0.5) * 0.6,
+                worldPosition.y + 1.05,
+                worldPosition.z + 0.5 + (random.nextDouble() - 0.5) * 0.6,
+                0.0, 0.0, 0.0
+            )
+        }
+    }
+
+    /**
+     * AudioWorldSound.tick() compares this against the event it started with and,
+     * on a mismatch, queues a fresh instance of itself and stops the old one. So
+     * swapping the loop mid-flight is just a matter of answering differently.
+     */
+    override fun getSound(): SoundEvent =
+        if (faulted) RefurbishedEuBridge.EU_TRANSFORMER_OVERLOAD.get()
+        else RefurbishedEuBridge.EU_TRANSFORMER_HUM.get()
 
     override fun getSource(): SoundSource = SoundSource.BLOCKS
 
     override fun getAudioPosition(): Vec3 = Vec3.atCenterOf(worldPosition)
 
-    override fun canPlayAudio(): Boolean = !isRemoved && isNodePowered
+    /**
+     * Overload drives the powered flag to false, so without the second clause the
+     * loudest thing a transformer can do - fail - would be the one thing it does
+     * in silence.
+     */
+    override fun canPlayAudio(): Boolean = !isRemoved && (isNodePowered || faulted)
 
     /** Quieter than the generator - this is a wall transformer, not an engine. */
-    override fun getAudioVolume(): Float = 0.4f
+    override fun getAudioVolume(): Float = if (faulted) 0.6f else 0.4f
 
-    override fun getAudioPitch(): Float = 0.8f
+    /**
+     * Both of these are re-read by AudioWorldSound every tick, so unlike the sound
+     * event itself they need no swap to take effect.
+     */
+    override fun getAudioPitch(): Float = if (faulted) 0.5f else 0.8f
 
     override fun getAudioHash(): Int = worldPosition.hashCode()
 
@@ -556,6 +620,10 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     companion object {
         const val TAG_CUSTOM_NAME = "CustomName"
         const val TAG_CONNECTED = "Connected"
+
+        /** Client ticks between fault particles, as a 1-in-N chance per tick. */
+        private const val SMOKE_INTERVAL = 4
+        private const val SPARK_INTERVAL = 16
 
         const val DATA_STORED_EU = 0
         const val DATA_CONNECTED = 1

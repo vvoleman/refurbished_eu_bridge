@@ -37,6 +37,11 @@ Looking at a transformer also puts a label under the crosshair, styled after
 Refurbished's own "Missing power" indicator: a status bolt — green running, grey
 off, red overloaded — then the circuit name and its device load, `3/8`.
 
+An overloaded transformer announces itself without being looked at, too: the hum
+drops to a slow grinding motor and it smokes and sparks from the top face. Both
+stop the moment the network is back inside its limit, or the transformer is
+switched off.
+
 ### Control
 
 A transformer is in one of two control modes, cycled from a button in its GUI:

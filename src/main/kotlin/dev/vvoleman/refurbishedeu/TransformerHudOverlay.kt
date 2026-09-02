@@ -45,6 +45,9 @@ object TransformerHudOverlay {
      */
     private val ICONS = ResourceLocation("refurbished_eu", "textures/gui/status_bolt.png")
 
+    /** Vanilla redstone dust icon, tinted red to signal redstone control mode. */
+    private val REDSTONE_ICON = ResourceLocation("minecraft", "textures/item/redstone.png")
+
     private enum class Status(val red: Float, val green: Float, val blue: Float) {
         ON(0.35f, 0.83f, 0.36f),
         OFF(0.62f, 0.62f, 0.62f),
@@ -86,12 +89,9 @@ object TransformerHudOverlay {
             .append(Component.literal(" "))
             .append(devices)
 
-        val redstoneLabel = if (blockEntity.controlMode == ControlMode.REDSTONE) {
-            Component.translatable("hud.refurbished_eu.redstone_mode")
-                .withStyle(ChatFormatting.RED)
-        } else null
+        val redstoneMode = blockEntity.controlMode == ControlMode.REDSTONE
 
-        drawLabel(minecraft, event.poseStack, label, status, redstoneLabel)
+        drawLabel(minecraft, event.poseStack, label, status, redstoneMode)
     }
 
     private fun drawLabel(
@@ -99,14 +99,12 @@ object TransformerHudOverlay {
         poseStack: PoseStack,
         text: Component,
         status: Status,
-        subtitle: Component? = null
+        redstoneMode: Boolean = false
     ) {
         val font = minecraft.font
-        val mainWidth = PADDING + ICON_SIZE + PADDING + font.width(text) + PADDING
-        val subtitleWidth = if (subtitle != null) PADDING + font.width(subtitle) + PADDING else 0
-        val boxWidth = maxOf(mainWidth, subtitleWidth)
-        val lineCount = if (subtitle != null) 2 else 1
-        val boxHeight = PADDING + lineCount * LINE_HEIGHT + (lineCount - 1) * PADDING + PADDING
+        val redstoneIconGap = if (redstoneMode) PADDING + ICON_SIZE else 0
+        val boxWidth = PADDING + ICON_SIZE + PADDING + font.width(text) + redstoneIconGap + PADDING
+        val boxHeight = PADDING + LINE_HEIGHT + PADDING
 
         val x = (minecraft.window.guiScaledWidth - boxWidth) / 2
         val y = (minecraft.window.guiScaledHeight - boxHeight) / 2 + VERTICAL_OFFSET
@@ -128,18 +126,23 @@ object TransformerHudOverlay {
         // Left set, the tint would bleed into every later element on the HUD.
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f)
 
+        val textX = x + PADDING + ICON_SIZE + PADDING
         font.drawShadow(
             poseStack, text,
-            (x + PADDING + ICON_SIZE + PADDING).toFloat(), (y + PADDING).toFloat(),
+            textX.toFloat(), (y + PADDING).toFloat(),
             0xFFFFFF
         )
 
-        if (subtitle != null) {
-            font.drawShadow(
-                poseStack, subtitle,
-                (x + PADDING).toFloat(), (y + PADDING + LINE_HEIGHT + PADDING).toFloat(),
-                0xFFFFFF
+        if (redstoneMode) {
+            // Append a redstone dust icon after the text to signal redstone control mode.
+            val iconX = textX + font.width(text) + PADDING
+            RenderSystem.setShaderTexture(0, REDSTONE_ICON)
+            RenderSystem.setShaderColor(0.91f, 0.29f, 0.24f, 1.0f)
+            GuiComponent.blit(
+                poseStack, iconX, y + PADDING, 0f, 0f,
+                ICON_SIZE, ICON_SIZE, 16, 16
             )
+            RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f)
         }
     }
 }

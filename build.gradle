@@ -64,10 +64,17 @@ dependencies {
     // Optional at runtime: the CC: Tweaked peripheral is registered behind a
     // ModList.isLoaded("computercraft") guard, so the mod still loads without it.
     compileOnly fg.deobf('packmods:cctweaked:1.101.4')
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
     kotlinOptions.jvmTarget = '17'
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
 }
 
 tasks.named('processResources', ProcessResources).configure {

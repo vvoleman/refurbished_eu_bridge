@@ -3,6 +3,8 @@ package dev.vvoleman.refurbishedeu
 import com.mojang.datafixers.types.Type
 import dev.vvoleman.refurbishedeu.mail.LetterItem
 import dev.vvoleman.refurbishedeu.mail.MailmanConfig
+import dev.vvoleman.refurbishedeu.mail.ParcelItem
+import dev.vvoleman.refurbishedeu.mail.ParcelMenu
 import net.minecraft.core.BlockPos
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.sounds.SoundEvent
@@ -63,6 +65,18 @@ object RefurbishedEuBridge {
     val LETTER: RegistryObject<Item> = ITEMS.register("letter") {
         LetterItem(Item.Properties().stacksTo(16).tab(CreativeModeTab.TAB_MISC))
     }
+
+    val PARCEL: RegistryObject<Item> = ITEMS.register("parcel") {
+        ParcelItem(Item.Properties().stacksTo(1).tab(CreativeModeTab.TAB_MISC))
+    }
+
+    val PARCEL_MENU: RegistryObject<MenuType<ParcelMenu>> =
+        MENUS.register("parcel") {
+            IForgeMenuType.create { containerId, inventory, _ ->
+                val held = inventory.player.mainHandItem
+                ParcelMenu(containerId, inventory, held, ParcelItem.asContainer(held))
+            }
+        }
 
     /** One block entity type shared by all three variants; the tier comes from the block. */
     val EU_TRANSFORMER_BE: RegistryObject<BlockEntityType<TransformerBlockEntity>> =

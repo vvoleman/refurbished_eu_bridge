@@ -1,6 +1,7 @@
 package dev.vvoleman.refurbishedeu
 
 import com.mrcrayfish.furniture.refurbished.client.renderer.blockentity.ElectricBlockEntityRenderer
+import dev.vvoleman.refurbishedeu.mail.ParcelScreen
 import net.minecraft.client.gui.screens.MenuScreens
 import net.minecraftforge.client.event.EntityRenderersEvent
 import net.minecraftforge.eventbus.api.IEventBus
@@ -31,6 +32,9 @@ object ClientSetup {
         event.enqueueWork {
             MenuScreens.register(RefurbishedEuBridge.EU_TRANSFORMER_MENU.get()) {
                 menu, inventory, title -> TransformerScreen(menu, inventory, title)
+            }
+            MenuScreens.register(RefurbishedEuBridge.PARCEL_MENU.get()) {
+                menu, inventory, title -> ParcelScreen(menu, inventory, title)
             }
         }
     }

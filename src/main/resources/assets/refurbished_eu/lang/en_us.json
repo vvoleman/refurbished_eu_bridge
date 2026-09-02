@@ -26,5 +26,8 @@
   "hud.refurbished_eu.devices": "%s/%s",
   "item.refurbished_eu.letter": "Letter",
   "tooltip.refurbished_eu.addressed_to": "To: %s",
-  "tooltip.refurbished_eu.unaddressed": "Name it in an anvil to address it"
+  "tooltip.refurbished_eu.unaddressed": "Name it in an anvil to address it",
+  "item.refurbished_eu.parcel": "Parcel",
+  "tooltip.refurbished_eu.parcel_contents": "%s/%s slots used",
+  "container.refurbished_eu.parcel": "Parcel"
 }

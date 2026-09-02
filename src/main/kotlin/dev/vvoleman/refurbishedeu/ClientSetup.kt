@@ -18,7 +18,7 @@ object ClientSetup {
         bus.addListener(::onRegisterRenderers)
         bus.addListener(::onClientSetup)
         // The hover label is a HUD overlay, so it listens on the Forge bus.
-        NameLabelOverlay.register(FORGE_BUS)
+        TransformerHudOverlay.register(FORGE_BUS)
     }
 
     private fun onRegisterRenderers(event: EntityRenderersEvent.RegisterRenderers) {

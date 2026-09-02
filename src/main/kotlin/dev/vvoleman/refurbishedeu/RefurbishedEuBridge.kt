@@ -85,6 +85,15 @@ object RefurbishedEuBridge {
         SoundEvent(id("eu_transformer_hum"))
     }
 
+    /**
+     * The overload loop, borrowed the same way: Refurbished's recycle bin motor,
+     * which is already built to loop as level audio. Played slow and low, it reads
+     * as machinery labouring rather than as a fire.
+     */
+    val EU_TRANSFORMER_OVERLOAD: RegistryObject<SoundEvent> = SOUNDS.register("eu_transformer_overload") {
+        SoundEvent(id("eu_transformer_overload"))
+    }
+
     init {
         BLOCKS.register(MOD_BUS)
         ITEMS.register(MOD_BUS)

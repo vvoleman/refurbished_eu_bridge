@@ -13,6 +13,7 @@ import ic2.api.energy.tile.IEnergyEmitter
 import ic2.api.energy.tile.IEnergySink
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.chat.Component
 import net.minecraft.sounds.SoundEvent
@@ -23,6 +24,7 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.inventory.ContainerData
+import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.properties.BlockStateProperties
@@ -90,6 +92,14 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
 
     var activeCount: Int = 0
         private set
+
+    /**
+     * What clients were last told, so the hover label can stay live without a
+     * block update packet every tick. Kept in step by load(), which is the same
+     * data clients receive in the update tag.
+     */
+    private var syncedConnectedCount: Int = 0
+    private var syncedOverloaded: Boolean = false
 
     /**
      * Synced to the open screen. Note vanilla sends these as shorts, so every
@@ -175,7 +185,13 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     fun serverTick() {
         val level = this.level ?: return
         if (level.isClientSide) return
+        tickServer(level)
+        // Split in two so the many early returns inside tickServer() can't skip
+        // the sync check.
+        syncHudStateIfChanged()
+    }
 
+    private fun tickServer(level: Level) {
         if (!netRegistered) {
             EnergyNet.INSTANCE.addTile(this)
             netRegistered = true
@@ -239,14 +255,44 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
             activeCount * TransformerConfig.euPerActive()
 
     /**
-     * Every device physically linked to us, regardless of whether power can
-     * currently reach it.
+     * Push a block update whenever something the hover label draws has moved.
+     *
+     * The label reads the *client's* block entity, and nothing else keeps these
+     * two fields fresh there: connectedCount never left the server, and while
+     * `Overloaded` does ride along in the update tag, both the flag being set
+     * (Refurbished's earlyNodeTick) and cleared (tickServer, above) only ever call
+     * setChanged(), which marks the chunk dirty without telling anyone.
+     *
+     * Both only move on the load-scan interval, so this is a handful of packets a
+     * minute at worst, and none at all on a settled network.
+     */
+    private fun syncHudStateIfChanged() {
+        if (connectedCount == syncedConnectedCount && isNodeOverloaded == syncedOverloaded) return
+        syncedConnectedCount = connectedCount
+        syncedOverloaded = isNodeOverloaded
+        sendUpdate()
+    }
+
+    /**
+     * Every node physically linked to us that occupies a slot in the network cap,
+     * regardless of whether power can currently reach it.
+     *
+     * This has to count exactly what Refurbished weighs against
+     * getMaxPowerableNodes(), or the GUI promises headroom the network does not
+     * have. ISourceNode.searchNodeNetwork() ends in
+     * `nodes.size() > getMaxPowerableNodes()` over every visited node that is not
+     * a source - lightswitches very much included, since a switch is a node on the
+     * network even though it consumes nothing. Excluding them here read one low
+     * per switch, so a cap of 8 showed "7/8" on a network the eighth device would
+     * overload.
      *
      * searchNodeNetwork() filters on canPowerTraverseNode(), so a branch behind a
      * switched-off lightswitch vanishes from it - which is right for billing but
      * wrong for a "connected devices" readout. The one-arg IElectricityNode
      * .searchNodes() passes `n -> true` for both predicates and walks the whole
-     * graph, so it still sees them.
+     * graph, so it still sees them. That makes this count a ceiling on the number
+     * Refurbished tests: never lower, and higher only for devices that would join
+     * the moment their switch is flicked on - which is the safe direction to err.
      */
     private fun countConnectedDevices(): Int {
         var connected = 0
@@ -254,10 +300,8 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
             // searchNodes() seeds its visited set with the start node, so we are
             // in our own results. Filtering on isSourceNode drops us and also any
             // generator or second transformer sharing the network - none of those
-            // are "devices".
+            // are "devices", and Refurbished's cap check skips them the same way.
             if (node.isSourceNode) continue
-            // A switch is a control gate, not a consumer.
-            if (node.nodeOwner is LightswitchBlockEntity) continue
             connected++
         }
         return connected
@@ -389,6 +433,22 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     override fun getDeviceName(): Component =
         customName?.let { Component.literal(it) } ?: blockState.block.name
 
+    // ---- Fault feedback -------------------------------------------------------------------
+
+    /**
+     * True while the block should be visibly and audibly complaining.
+     *
+     * The `enabled` half matters: tickServer() returns early on a switched-off
+     * transformer without ever re-checking the overload flag, so the flag outlives
+     * the switch. Without this a transformer you had already switched off would go
+     * on grinding and smoking for good.
+     *
+     * Client-side this reads the flag out of the update tag, which is the same
+     * sync the hover label's red bolt runs on - no extra packets for either.
+     */
+    private val faulted: Boolean
+        get() = isNodeOverloaded && enabled
+
     // ---- Audio --------------------------------------------------------------------------
 
     /**
@@ -398,20 +458,67 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
      */
     fun clientTick() {
         AudioManager.get().playLevelAudio(this)
+        if (faulted) spawnFaultParticles()
     }
 
-    override fun getSound(): SoundEvent = RefurbishedEuBridge.EU_TRANSFORMER_HUM.get()
+    /**
+     * Purely cosmetic and purely client-side - the ticker this runs on only exists
+     * on the client, and every input is already there.
+     */
+    private fun spawnFaultParticles() {
+        val level = this.level ?: return
+        val random = level.random
+        // A puff every tick reads as a fire. Every fourth reads as a fault.
+        if (random.nextInt(SMOKE_INTERVAL) == 0) {
+            level.addParticle(
+                ParticleTypes.LARGE_SMOKE,
+                worldPosition.x + 0.5 + (random.nextDouble() - 0.5) * 0.5,
+                worldPosition.y + 1.05,
+                worldPosition.z + 0.5 + (random.nextDouble() - 0.5) * 0.5,
+                0.0, 0.0, 0.0
+            )
+        }
+        // The lightning rod's particle, and the reason this reads as electrical
+        // rather than as something merely burning.
+        if (random.nextInt(SPARK_INTERVAL) == 0) {
+            level.addParticle(
+                ParticleTypes.ELECTRIC_SPARK,
+                worldPosition.x + 0.5 + (random.nextDouble() - 0.5) * 0.6,
+                worldPosition.y + 1.05,
+                worldPosition.z + 0.5 + (random.nextDouble() - 0.5) * 0.6,
+                0.0, 0.0, 0.0
+            )
+        }
+    }
+
+    /**
+     * AudioWorldSound.tick() compares this against the event it started with and,
+     * on a mismatch, queues a fresh instance of itself and stops the old one. So
+     * swapping the loop mid-flight is just a matter of answering differently.
+     */
+    override fun getSound(): SoundEvent =
+        if (faulted) RefurbishedEuBridge.EU_TRANSFORMER_OVERLOAD.get()
+        else RefurbishedEuBridge.EU_TRANSFORMER_HUM.get()
 
     override fun getSource(): SoundSource = SoundSource.BLOCKS
 
     override fun getAudioPosition(): Vec3 = Vec3.atCenterOf(worldPosition)
 
-    override fun canPlayAudio(): Boolean = !isRemoved && isNodePowered
+    /**
+     * Overload drives the powered flag to false, so without the second clause the
+     * loudest thing a transformer can do - fail - would be the one thing it does
+     * in silence.
+     */
+    override fun canPlayAudio(): Boolean = !isRemoved && (isNodePowered || faulted)
 
     /** Quieter than the generator - this is a wall transformer, not an engine. */
-    override fun getAudioVolume(): Float = 0.4f
+    override fun getAudioVolume(): Float = if (faulted) 0.6f else 0.4f
 
-    override fun getAudioPitch(): Float = 0.8f
+    /**
+     * Both of these are re-read by AudioWorldSound every tick, so unlike the sound
+     * event itself they need no swap to take effect.
+     */
+    override fun getAudioPitch(): Float = if (faulted) 0.5f else 0.8f
 
     override fun getAudioHash(): Int = worldPosition.hashCode()
 
@@ -455,23 +562,29 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     // ---- Persistence -------------------------------------------------------------------
 
     /**
-     * Name and control state, shared by disk saves and the block update packet.
+     * Everything a client needs about us, shared by disk saves and the block
+     * update packet.
      *
      * Both halves of the on/off state travel, not just the effective result:
      * Refurbished's Home Control app renders from the *client's* block entity and
      * calls isDeviceEnabled() on it, so the client has to be able to work the
      * answer out the same way the server does.
+     *
+     * The device count is here rather than in ContainerData alone because the
+     * hover label draws with no menu open. Saving it to disk too is what stops a
+     * freshly loaded chunk reading 0/8 for the tick or two before the first scan.
      */
-    private fun writeControlState(tag: CompoundTag) {
+    private fun writeSyncedState(tag: CompoundTag) {
         tag.putBoolean("Enabled", manualEnabled)
         tag.putBoolean("Redstone", redstonePowered)
         tag.putString("ControlMode", controlMode.id)
+        tag.putInt(TAG_CONNECTED, connectedCount)
         customName?.let { tag.putString(TAG_CUSTOM_NAME, it) }
     }
 
     override fun getUpdateTag(): CompoundTag {
         val tag = super.getUpdateTag()
-        writeControlState(tag)
+        writeSyncedState(tag)
         return tag
     }
 
@@ -481,6 +594,9 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
             tag.getString(TAG_CUSTOM_NAME).ifEmpty { null }
         } else null
         storedEu = tag.getInt("StoredEu")
+        connectedCount = tag.getInt(TAG_CONNECTED)
+        syncedConnectedCount = connectedCount
+        syncedOverloaded = isNodeOverloaded
         manualEnabled = !tag.contains("Enabled") || tag.getBoolean("Enabled")
         redstonePowered = tag.getBoolean("Redstone")
         controlMode = if (tag.contains("ControlMode")) {
@@ -491,7 +607,7 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     override fun saveAdditional(tag: CompoundTag) {
         super.saveAdditional(tag)
         tag.putInt("StoredEu", storedEu)
-        writeControlState(tag)
+        writeSyncedState(tag)
     }
 
     /** ContainerData reaches an open screen only; everything else needs this. */
@@ -503,6 +619,11 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
 
     companion object {
         const val TAG_CUSTOM_NAME = "CustomName"
+        const val TAG_CONNECTED = "Connected"
+
+        /** Client ticks between fault particles, as a 1-in-N chance per tick. */
+        private const val SMOKE_INTERVAL = 4
+        private const val SPARK_INTERVAL = 16
 
         const val DATA_STORED_EU = 0
         const val DATA_CONNECTED = 1

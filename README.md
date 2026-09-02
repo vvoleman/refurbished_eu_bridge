@@ -24,9 +24,23 @@ next). All values are configurable — see [Configuration](#configuration).
 > **Feeding a transformer above its tier will make IC2 explode it.** Step the
 > voltage down first, or use a higher tier.
 
+The device cap counts every node on the network, not just the ones that draw
+power — a lightswitch takes a slot the same as a lamp does. That is Refurbished's
+own accounting; the counter matches it so the displayed maximum is a number you
+can actually reach without overloading.
+
 Each transformer has a GUI showing buffer, connected and active device counts,
-current draw and accepted voltage tier. You can give it a name, which appears as
-a hover label in the world and everywhere else the transformer is listed.
+current draw and accepted voltage tier. You can give it a name, which appears
+everywhere the transformer is listed.
+
+Looking at a transformer also puts a label under the crosshair, styled after
+Refurbished's own "Missing power" indicator: a status bolt — green running, grey
+off, red overloaded — then the circuit name and its device load, `3/8`.
+
+An overloaded transformer announces itself without being looked at, too: the hum
+drops to a slow grinding motor and it smokes and sparks from the top face. Both
+stop the moment the network is back inside its limit, or the transformer is
+switched off.
 
 ### Control
 

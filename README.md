@@ -24,6 +24,11 @@ next). All values are configurable — see [Configuration](#configuration).
 > **Feeding a transformer above its tier will make IC2 explode it.** Step the
 > voltage down first, or use a higher tier.
 
+The device cap counts every node on the network, not just the ones that draw
+power — a lightswitch takes a slot the same as a lamp does. That is Refurbished's
+own accounting; the counter matches it so the displayed maximum is a number you
+can actually reach without overloading.
+
 Each transformer has a GUI showing buffer, connected and active device counts,
 current draw and accepted voltage tier. You can give it a name, which appears as
 a hover label in the world and everywhere else the transformer is listed.

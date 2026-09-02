@@ -239,14 +239,25 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
             activeCount * TransformerConfig.euPerActive()
 
     /**
-     * Every device physically linked to us, regardless of whether power can
-     * currently reach it.
+     * Every node physically linked to us that occupies a slot in the network cap,
+     * regardless of whether power can currently reach it.
+     *
+     * This has to count exactly what Refurbished weighs against
+     * getMaxPowerableNodes(), or the GUI promises headroom the network does not
+     * have. ISourceNode.searchNodeNetwork() ends in
+     * `nodes.size() > getMaxPowerableNodes()` over every visited node that is not
+     * a source - lightswitches very much included, since a switch is a node on the
+     * network even though it consumes nothing. Excluding them here read one low
+     * per switch, so a cap of 8 showed "7/8" on a network the eighth device would
+     * overload.
      *
      * searchNodeNetwork() filters on canPowerTraverseNode(), so a branch behind a
      * switched-off lightswitch vanishes from it - which is right for billing but
      * wrong for a "connected devices" readout. The one-arg IElectricityNode
      * .searchNodes() passes `n -> true` for both predicates and walks the whole
-     * graph, so it still sees them.
+     * graph, so it still sees them. That makes this count a ceiling on the number
+     * Refurbished tests: never lower, and higher only for devices that would join
+     * the moment their switch is flicked on - which is the safe direction to err.
      */
     private fun countConnectedDevices(): Int {
         var connected = 0
@@ -254,10 +265,8 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
             // searchNodes() seeds its visited set with the start node, so we are
             // in our own results. Filtering on isSourceNode drops us and also any
             // generator or second transformer sharing the network - none of those
-            // are "devices".
+            // are "devices", and Refurbished's cap check skips them the same way.
             if (node.isSourceNode) continue
-            // A switch is a control gate, not a consumer.
-            if (node.nodeOwner is LightswitchBlockEntity) continue
             connected++
         }
         return connected

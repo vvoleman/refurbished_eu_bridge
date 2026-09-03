@@ -1,5 +1,6 @@
 package dev.vvoleman.refurbishedeu.mail
 
+import net.minecraft.core.BlockPos
 import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.PathfinderMob
@@ -23,10 +24,14 @@ class MailmanEntity(type: EntityType<out PathfinderMob>, level: Level) : Pathfin
     var routeId: UUID? = null
     var carried: ItemStack = ItemStack.EMPTY
 
+    /** Set by MailRouteService when the mailman is materialised. */
+    var destination: BlockPos? = null
+
     override fun registerGoals() {
         goalSelector.addGoal(0, FloatGoal(this))
+        goalSelector.addGoal(1, DeliverMailGoal(this) { it.destination })
+        goalSelector.addGoal(2, TravelToTargetGoal(this) { it.destination })
         goalSelector.addGoal(9, LookAtPlayerGoal(this, Player::class.java, 6.0f))
-        // Travel and delivery goals are added in Task 11.
     }
 
     /** Its lifecycle belongs to the route, so vanilla despawn rules must not touch it. */

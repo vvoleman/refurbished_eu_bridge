@@ -29,5 +29,7 @@
   "tooltip.refurbished_eu.unaddressed": "Name it in an anvil to address it",
   "item.refurbished_eu.parcel": "Parcel",
   "tooltip.refurbished_eu.parcel_contents": "%s/%s slots used",
-  "container.refurbished_eu.parcel": "Parcel"
+  "container.refurbished_eu.parcel": "Parcel",
+  "entity.refurbished_eu.mailman": "Mailman",
+  "item.refurbished_eu.mailman_spawn_egg": "Mailman Spawn Egg"
 }

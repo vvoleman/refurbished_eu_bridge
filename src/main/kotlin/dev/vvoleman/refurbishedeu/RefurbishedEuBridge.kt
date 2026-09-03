@@ -3,11 +3,14 @@ package dev.vvoleman.refurbishedeu
 import com.mojang.datafixers.types.Type
 import dev.vvoleman.refurbishedeu.mail.LetterItem
 import dev.vvoleman.refurbishedeu.mail.MailmanConfig
+import dev.vvoleman.refurbishedeu.mail.MailmanEntity
 import dev.vvoleman.refurbishedeu.mail.ParcelItem
 import dev.vvoleman.refurbishedeu.mail.ParcelMenu
 import net.minecraft.core.BlockPos
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.sounds.SoundEvent
+import net.minecraft.world.entity.EntityType
+import net.minecraft.world.entity.MobCategory
 import net.minecraft.world.inventory.MenuType
 import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.CreativeModeTab
@@ -18,7 +21,9 @@ import net.minecraft.world.level.block.state.BlockBehaviour
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.material.Material
 import net.minecraftforge.api.distmarker.Dist
+import net.minecraftforge.common.ForgeSpawnEggItem
 import net.minecraftforge.common.extensions.IForgeMenuType
+import net.minecraftforge.event.entity.EntityAttributeCreationEvent
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.fml.ModList
 import net.minecraftforge.fml.ModLoadingContext
@@ -39,6 +44,7 @@ object RefurbishedEuBridge {
     private val BLOCK_ENTITIES = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, ID)
     private val MENUS = DeferredRegister.create(ForgeRegistries.MENU_TYPES, ID)
     private val SOUNDS = DeferredRegister.create(ForgeRegistries.SOUND_EVENTS, ID)
+    private val ENTITIES = DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, ID)
 
     val TRANSFORMERS: Map<TransformerTier, RegistryObject<Block>> =
         TransformerTier.values().associateWith { tier ->
@@ -77,6 +83,17 @@ object RefurbishedEuBridge {
                 ParcelMenu(containerId, inventory, held, ParcelItem.asContainer(held))
             }
         }
+
+    val MAILMAN: RegistryObject<EntityType<MailmanEntity>> = ENTITIES.register("mailman") {
+        EntityType.Builder.of(::MailmanEntity, MobCategory.MISC)
+            .sized(0.6f, 1.95f)
+            .clientTrackingRange(10)
+            .build("mailman")
+    }
+
+    val MAILMAN_EGG: RegistryObject<Item> = ITEMS.register("mailman_spawn_egg") {
+        ForgeSpawnEggItem(MAILMAN, 0x3F3F5C, 0xB08040, Item.Properties().tab(CreativeModeTab.TAB_MISC))
+    }
 
     /** One block entity type shared by all three variants; the tier comes from the block. */
     val EU_TRANSFORMER_BE: RegistryObject<BlockEntityType<TransformerBlockEntity>> =
@@ -120,12 +137,14 @@ object RefurbishedEuBridge {
         BLOCK_ENTITIES.register(MOD_BUS)
         MENUS.register(MOD_BUS)
         SOUNDS.register(MOD_BUS)
+        ENTITIES.register(MOD_BUS)
 
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, TransformerConfig.SPEC)
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, MailmanConfig.SPEC, "refurbished_eu-mailman-server.toml")
         ModNetwork.register()
 
         MOD_BUS.addListener(::commonSetup)
+        MOD_BUS.addListener(::onEntityAttributes)
 
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
             Runnable { ClientSetup.register(MOD_BUS) }
@@ -141,6 +160,10 @@ object RefurbishedEuBridge {
         if (ModList.get().isLoaded("computercraft")) {
             event.enqueueWork { CcCompat.register() }
         }
+    }
+
+    private fun onEntityAttributes(event: EntityAttributeCreationEvent) {
+        event.put(MAILMAN.get(), MailmanEntity.attributes().build())
     }
 
     fun id(path: String) = ResourceLocation(ID, path)

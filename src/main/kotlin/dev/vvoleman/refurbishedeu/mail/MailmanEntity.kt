@@ -31,7 +31,10 @@ class MailmanEntity(type: EntityType<out PathfinderMob>, level: Level) : Pathfin
     override fun registerGoals() {
         goalSelector.addGoal(0, FloatGoal(this))
         goalSelector.addGoal(1, DeliverMailGoal(this) { it.destination })
-        goalSelector.addGoal(2, TravelToTargetGoal(this) { it.destination })
+        // Above TravelToTargetGoal: when there is water in the way, the boat
+        // goal must win Flag.MOVE rather than the walking goal wading in.
+        goalSelector.addGoal(2, UseBoatGoal(this) { it.destination })
+        goalSelector.addGoal(3, TravelToTargetGoal(this) { it.destination })
         goalSelector.addGoal(9, LookAtPlayerGoal(this, Player::class.java, 6.0f))
     }
 

@@ -2,6 +2,7 @@ package dev.vvoleman.refurbishedeu
 
 import com.mojang.datafixers.types.Type
 import dev.vvoleman.refurbishedeu.mail.LetterItem
+import dev.vvoleman.refurbishedeu.mail.MailRouteService
 import dev.vvoleman.refurbishedeu.mail.MailmanConfig
 import dev.vvoleman.refurbishedeu.mail.MailmanEntity
 import dev.vvoleman.refurbishedeu.mail.ParcelItem
@@ -23,6 +24,7 @@ import net.minecraft.world.level.material.Material
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.common.ForgeSpawnEggItem
 import net.minecraftforge.common.extensions.IForgeMenuType
+import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.fml.ModList
@@ -33,6 +35,7 @@ import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent
 import net.minecraftforge.registries.DeferredRegister
 import net.minecraftforge.registries.ForgeRegistries
 import net.minecraftforge.registries.RegistryObject
+import thedarkcolour.kotlinforforge.forge.FORGE_BUS
 import thedarkcolour.kotlinforforge.forge.MOD_BUS
 
 @Mod(RefurbishedEuBridge.ID)
@@ -145,6 +148,13 @@ object RefurbishedEuBridge {
 
         MOD_BUS.addListener(::commonSetup)
         MOD_BUS.addListener(::onEntityAttributes)
+
+        FORGE_BUS.addListener<TickEvent.ServerTickEvent> { event ->
+            if (event.phase == TickEvent.Phase.END) {
+                val level = event.server.overworld()
+                MailRouteService.get(level).tick(event.server)
+            }
+        }
 
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
             Runnable { ClientSetup.register(MOD_BUS) }

@@ -8,11 +8,11 @@ import net.minecraft.resources.ResourceKey
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.Mth
+import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.level.saveddata.SavedData
 import net.minecraft.world.phys.Vec3
-import net.minecraft.world.item.ItemStack
 import com.mrcrayfish.furniture.refurbished.blockentity.MailboxBlockEntity
 import com.mrcrayfish.furniture.refurbished.mail.DeliveryService
 import dev.vvoleman.refurbishedeu.RefurbishedEuBridge
@@ -160,6 +160,12 @@ class MailRouteService : SavedData() {
     }
 
     private fun sweepOne(be: MailboxBlockEntity, origin: MailboxRef) {
+        // Hoisted out of the per-slot loop: this doesn't depend on any slot's
+        // data, only on which mailbox is being swept, so recomputing it per
+        // addressed stack found in a many-slot mailbox would be pure waste -
+        // MailboxIndex.resolveDestination (via byName) allocates lists and
+        // lowercases every candidate name on every call.
+        val local = cachedMailboxes.filter { it.level == origin.level }
         for (slot in 0 until be.containerSize) {
             val stack = be.getItem(slot)
             if (stack.isEmpty) continue
@@ -167,18 +173,29 @@ class MailRouteService : SavedData() {
             val target = addressOf(stack) ?: continue
             if (target.equals(origin.name, ignoreCase = true)) continue
 
-            // Restrict to this dimension BEFORE resolving the name. byName picks the
-            // nearest match and compares raw block positions, so a same-named mailbox in
-            // another dimension could otherwise win on a meaningless coordinate distance
-            // and the mail would be dropped here - even though a valid local one exists.
-            val local = cachedMailboxes.filter { it.level == origin.level }
-            val destination = MailboxIndex.byName(local, target, origin.pos) ?: continue
-            if (destination.id == origin.id) continue
+            // A stack carried back here by a previous failed delivery is left
+            // alone until re-addressed to something other than what it just
+            // failed to reach - see beginReturn's doc comment.
+            val returnedFrom = MailAddress.returnedFrom(stack)
+            if (returnedFrom != null && returnedFrom.trim().equals(target.trim(), ignoreCase = true)) continue
+
+            // local is already restricted to this dimension; resolveDestination's
+            // own filter over it is then just a cheap no-op pass, not a rescan of
+            // every mailbox on the server. See its doc comment for why the filter
+            // has to happen before byName's nearest-match logic at all.
+            val destination = MailboxIndex.resolveDestination(local, origin, target) ?: continue
 
             val route = MailRoute(
                 id = UUID.randomUUID(),
                 stack = stack.copy(),
-                originId = origin.id,
+                // The live block entity's id, not origin.id from the (up to
+                // indexRefreshTicks-stale) cached index: a mailbox broken and
+                // replaced on the same spot gets a fresh random id from its
+                // constructor, and recording the dead cached one here would
+                // later make handleUnresolvedDestination treat this route's
+                // own still-existing origin as gone and delete undeliverable
+                // mail instead of returning it.
+                originId = be.id,
                 targetId = destination.id,
                 level = origin.level,
                 pos = Vec3(origin.pos.x + 0.5, origin.pos.y.toDouble(), origin.pos.z + 0.5),
@@ -218,10 +235,7 @@ class MailRouteService : SavedData() {
         if (mailboxFor(route.originId, route.level) == null) {
             return finish(level, route)
         }
-        route.state = RouteState.RETURNING
-        route.lastDistance = Double.MAX_VALUE
-        route.stalledTicks = 0
-        setDirty()
+        beginReturn(route)
         return false
     }
 
@@ -294,10 +308,7 @@ class MailRouteService : SavedData() {
             dematerialise(level, route)
             return true
         }
-        route.state = RouteState.RETURNING
-        route.lastDistance = Double.MAX_VALUE
-        route.stalledTicks = 0
-        setDirty()
+        beginReturn(route)
         return false
     }
 
@@ -339,16 +350,37 @@ class MailRouteService : SavedData() {
 
         // No progress for long enough: open water, or a mailbox that can't be walked to.
         if (route.state == RouteState.RETURNING) return finish(level, route)
-        route.state = RouteState.RETURNING
-        route.lastDistance = Double.MAX_VALUE
-        route.stalledTicks = 0
-        setDirty()
+        beginReturn(route)
         return false
     }
 
     private fun finish(level: ServerLevel, route: MailRoute): Boolean {
         dematerialise(level, route)
         return true
+    }
+
+    /**
+     * Flips a route from TRAVELLING to RETURNING and stamps its carried stack
+     * with the target it just failed to reach.
+     *
+     * Without the stamp, a returned stack lands back in its origin mailbox
+     * still addressed exactly as it was (the address tag/custom name is never
+     * cleared), so the next sweep would pick it straight back up and send it
+     * on the same doomed trip forever - one of [MailmanConfig.maxActiveRoutes]
+     * permanently occupied and a mailman respawned every cycle, with the
+     * player never told delivery failed. Keying the stamp on the target
+     * string (rather than a bare "already returned" flag) means a player who
+     * re-addresses the stack to somewhere else changes the very value being
+     * compared, so it naturally becomes sweepable again with no separate
+     * clearing step - while re-addressing it to the SAME failed target is
+     * correctly still left alone.
+     */
+    private fun beginReturn(route: MailRoute) {
+        addressOf(route.stack)?.let { MailAddress.markReturned(route.stack, it) }
+        route.state = RouteState.RETURNING
+        route.lastDistance = Double.MAX_VALUE
+        route.stalledTicks = 0
+        setDirty()
     }
 
     override fun save(tag: CompoundTag): CompoundTag {

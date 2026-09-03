@@ -56,4 +56,21 @@ object MailboxIndex {
             .filter { it.name!!.trim().lowercase() == wanted }
             .minByOrNull { it.pos.distSqr(from) }
     }
+
+    /**
+     * Resolves the mailbox a sweep should route [target] to from [origin]: restricted
+     * to origin's dimension before matching by name, and never origin itself.
+     *
+     * The dimension restriction has to happen before [byName] runs, not after -
+     * byName picks the nearest match by raw block position with no idea that two
+     * different dimensions even exist, so a same-named mailbox in another
+     * dimension can otherwise win on a meaningless coordinate distance even
+     * though a valid same-dimension match exists, and the mail is then routed
+     * nowhere reachable.
+     */
+    fun resolveDestination(refs: List<MailboxRef>, origin: MailboxRef, target: String): MailboxRef? {
+        val local = refs.filter { it.level == origin.level }
+        val destination = byName(local, target, origin.pos) ?: return null
+        return destination.takeIf { it.id != origin.id }
+    }
 }

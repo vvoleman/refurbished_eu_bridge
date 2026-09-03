@@ -48,4 +48,27 @@ class MailAddressTest {
         MailAddress.apply(stack, "   ", sender)
         assertFalse(MailAddress.isAddressed(stack))
     }
+
+    @Test
+    fun `a fresh stack has no returned-from marker`() {
+        val stack = ItemStack(Items.PAPER)
+        assertNull(MailAddress.returnedFrom(stack))
+    }
+
+    @Test
+    fun `markReturned then read round trips`() {
+        val stack = ItemStack(Items.PAPER)
+        MailAddress.markReturned(stack, "Bob")
+        assertEquals("Bob", MailAddress.returnedFrom(stack))
+    }
+
+    @Test
+    fun `markReturned does not disturb an existing address`() {
+        val stack = ItemStack(Items.PAPER)
+        MailAddress.apply(stack, "Bob", sender)
+        MailAddress.markReturned(stack, "Bob")
+        assertEquals("Bob", MailAddress.target(stack))
+        assertEquals(sender, MailAddress.sender(stack))
+        assertEquals("Bob", MailAddress.returnedFrom(stack))
+    }
 }

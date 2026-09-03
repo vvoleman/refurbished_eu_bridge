@@ -16,6 +16,7 @@ object MailAddress {
     private const val ROOT = "RefurbishedEuMail"
     private const val TARGET = "Target"
     private const val SENDER = "Sender"
+    private const val RETURNED_FROM = "ReturnedFrom"
 
     fun apply(stack: ItemStack, target: String, sender: UUID) {
         val root = CompoundTag()
@@ -36,4 +37,28 @@ object MailAddress {
     }
 
     fun isAddressed(stack: ItemStack): Boolean = target(stack) != null
+
+    /**
+     * Records the target a delivery failed to reach and was carried back from.
+     *
+     * Keyed on the target string itself, not a bare boolean: the sweep skips a
+     * stack whose [returnedFrom] still equals its current target, but a player
+     * who re-addresses the stack (anvil rename, or editing a parcel) changes
+     * the target that is compared against, so the stale value simply stops
+     * matching and the stack becomes sweepable again - no separate clearing
+     * hook needed.
+     *
+     * Uses [ItemStack.getOrCreateTagElement] rather than [apply]'s
+     * whole-tag replacement so this can be stamped onto a stack that already
+     * carries a Target/Sender pair without disturbing either.
+     */
+    fun markReturned(stack: ItemStack, target: String) {
+        stack.getOrCreateTagElement(ROOT).putString(RETURNED_FROM, target)
+    }
+
+    fun returnedFrom(stack: ItemStack): String? {
+        val root = stack.tag?.getCompound(ROOT) ?: return null
+        if (!root.contains(RETURNED_FROM)) return null
+        return root.getString(RETURNED_FROM).ifBlank { null }
+    }
 }

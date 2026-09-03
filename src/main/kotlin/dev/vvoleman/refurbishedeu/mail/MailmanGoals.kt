@@ -15,7 +15,13 @@ class TravelToTargetGoal(
 ) : Goal() {
 
     private var target: BlockPos? = null
-    private var repathCooldown = 0
+
+    /**
+     * When it is safe to ask for a path. Asking on a timer instead used to
+     * destroy the path being walked whenever the timer landed while the mailman
+     * was airborne - see [RepathPlanner] for why.
+     */
+    private val planner = RepathPlanner()
 
     init {
         flags = EnumSet.of(Flag.MOVE)
@@ -29,24 +35,26 @@ class TravelToTargetGoal(
     override fun canContinueToUse(): Boolean = canUse()
 
     override fun start() {
-        repathCooldown = 0
+        planner.reset()
     }
 
     override fun tick() {
         val destination = target ?: return
-        if (repathCooldown-- > 0) return
-        repathCooldown = REPATH_INTERVAL
-        mob.navigation.moveTo(
+        if (!planner.shouldPath(destination, mob.navigation.isDone)) return
+        // moveTo reports false when it could not produce a path at all, which
+        // for a grounded navigator mostly means "was in the air this tick".
+        // The planner turns that into an immediate retry.
+        val pathed = mob.navigation.moveTo(
             destination.x + 0.5,
             destination.y.toDouble(),
             destination.z + 0.5,
             1.0,
         )
+        planner.onPathed(destination, pathed)
     }
 
     companion object {
         const val ARRIVAL_RANGE = 2.0
-        const val REPATH_INTERVAL = 20
     }
 }
 

@@ -323,6 +323,11 @@ class MailRouteService : SavedData() {
         (level.getEntity(id) as? MailmanEntity)?.let {
             route.pos = it.position()
             route.yTrustworthy = true
+            // A mailman mid-crossing owns a boat. Dropping the mailman without
+            // it would strand the boat on the water: MailBoatEntity discards
+            // itself when riderless, but only while its chunk still ticks, and
+            // the route is the explicit owner here.
+            (it.vehicle as? MailBoatEntity)?.discard()
             it.discard()
         }
         route.entity = null

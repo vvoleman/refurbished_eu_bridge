@@ -923,9 +923,41 @@ In `docs/superpowers/specs/2026-09-02-mailman-design.md`, behavioural limit 2 cu
    returns the mail to its origin and tells the sender.
 ```
 
-- [ ] **Step 2: Document the feature in the README**
+- [ ] **Step 2a: Correct the stale README limit**
 
-In the Mail section, after the existing behaviour description, add:
+In `README.md`, in `### Behavioural limits` (around line 131), the second
+bullet begins "**A route that can't reach its target stalls, then returns to
+sender.**" and cites "(open water, an unreachable mailbox, whatever the
+obstruction)". Open water is no longer an example of this. Change that
+parenthetical to read:
+
+```markdown
+  (an unreachable mailbox, water too wide or too tangled to boat across,
+  whatever the obstruction)
+```
+
+Change nothing else in that bullet.
+
+- [ ] **Step 2b: Document the new settings in the README config block**
+
+In `README.md`, in `### The `[mailman]` config block` (around line 157), the
+TOML sample lists six settings. Add the three new ones so the sample matches
+what the mod actually writes:
+
+```toml
+    stallTimeoutTicks = 1200     # ticks without progress before a route gives up
+    useBoats = true              # cross open water by boat
+    minWaterCrossingWidth = 6    # water narrower than this is waded, not boated
+    boatCrossingTimeoutTicks = 600  # abandon a crossing taking longer than this
+```
+
+(The `stallTimeoutTicks` line is shown only to locate the insertion point —
+it already exists; add the three lines after it, inside the same code fence.)
+
+- [ ] **Step 2c: Document the feature in the README**
+
+In `README.md`, insert a new `### Crossing water` section in the `## Mail`
+section, immediately BEFORE the `### Behavioural limits` heading:
 
 ```markdown
 ### Crossing water

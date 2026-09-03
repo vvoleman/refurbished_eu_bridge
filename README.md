@@ -96,6 +96,71 @@ CC: Tweaked is optional. Without it the peripheral is simply never registered.
 
 ---
 
+## Mail
+
+A second, slower delivery path alongside Refurbished's own Post Box, built on
+two new items and a walking courier.
+
+**Letter** and **Parcel** are addressed by **naming the stack in an anvil** —
+there is no addressing screen for either item. Whatever you rename the stack
+to is the target mailbox's name. A Parcel also has its own screen (right-click
+it), but that screen is for its nine slots of *contents*, not its address —
+name it in an anvil the same as a Letter.
+
+Drop an addressed Letter or Parcel into any **named mailbox** and it is picked
+up automatically, without needing to open the mailbox's own UI. From there it
+is carried — physically, over real time, at real distance — to a mailbox with
+the matching name, by a **Mailman** entity that spawns near the mail and walks
+it there. While no player is nearby to watch it walk, the delivery still
+advances by dead reckoning (see `blocksPerSecond` below) so it doesn't stall
+just because nobody's looking; it only materialises into an actual entity once
+a player is close enough to see one.
+
+**Refurbished's own Post Box is untouched.** It still delivers instantly, by
+UUID, through its own UI — that path is unchanged and unaffected by any of
+this. Mail and Post Box packages are two independent systems that happen to
+share the mailbox block; this one is the deliberately slow one.
+
+### Behavioural limits
+
+- **Same dimension only.** A route can't cross dimensions; Refurbished's
+  mailboxes are matched by name only within the origin's own dimension.
+- **A route that can't reach its target stalls, then returns to sender.** If a
+  delivery makes no progress for long enough (open water, an unreachable
+  mailbox, whatever the obstruction), it gives up, carries the mail back to
+  the mailbox it was posted from, and then sits there. It is **not**
+  automatically retried — the returned stack keeps its old address and is
+  ignored by future sweeps until you re-address it (rename it again in an
+  anvil, or edit a parcel's contents) to something other than the target it
+  just failed to reach.
+- **Delivery is slow by design.** This is the point of the feature, not a
+  bug — see `blocksPerSecond` below; a several-thousand-block trip is meant to
+  take real minutes.
+- **Duplicate mailbox names resolve to the nearest one.** Refurbished allows
+  two mailboxes with the same name; if that happens, mail addressed to that
+  name goes to whichever one is closer to the mailbox it was posted from.
+
+### The `[mailman]` config block
+
+Mailman settings live in their **own** server config file, separate from the
+transformer's — `<world>/serverconfig/refurbished_eu-mailman-server.toml`:
+
+```toml
+[mailman]
+    blocksPerSecond = 4.0        # dead-reckoning speed while nobody is watching
+    maxActiveRoutes = 32         # concurrent deliveries server-wide
+    maxMaterialisedMailmen = 8   # real mailman entities that may exist at once
+    indexRefreshTicks = 600      # how often the mailbox index is rebuilt
+    pickupScanTicks = 200        # how often mailboxes are swept for outgoing mail
+    stallTimeoutTicks = 1200     # ticks without progress before a route gives up
+```
+
+`blocksPerSecond` only governs dead reckoning — a materialised mailman walks
+at its own entity speed instead. At the default of 4, a 5000-block delivery
+takes roughly 20 minutes.
+
+---
+
 ## Configuration
 
 The config is a **server** config, so it lives per-world at
@@ -202,10 +267,23 @@ name `f_60439_`. That field doesn't exist in a Mojmap dev runtime, where it is
 were found matching f_60439_"* before any of our code runs.
 
 The three pack mods are therefore deliberately kept off the dev runtime
-classpath, which leaves nothing to test against in dev.
+classpath, which leaves nothing to run in dev.
 
-**Test by building the jar and installing it into the real pack**, where SRG
-names are correct.
+There are, however, JUnit tests covering the pure-logic layer (mailbox
+resolution, route state, distance/timing math) that need none of that
+classpath. Run them with:
+
+```bash
+./gradlew test
+```
+
+A green build and green tests mean the logic they cover is correct and
+everything compiles — they are not a substitute for running the game. Nothing
+in this mod has ever been run in an actual client or server; the game itself
+still cannot be started in dev for the reason above.
+
+**Exercise the game by building the jar and installing it into the real
+pack**, where SRG names are correct.
 
 ---
 

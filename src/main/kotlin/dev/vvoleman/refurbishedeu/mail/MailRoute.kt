@@ -28,6 +28,13 @@ class MailRoute(
     val level: ResourceKey<Level>,
     var pos: Vec3,
     var state: RouteState,
+    /**
+     * In-memory only, never persisted: a materialised MailmanEntity has
+     * shouldBeSaved() = false (Task 12 fix round 1), so it cannot survive a
+     * restart by construction. A UUID written here would refer to nothing
+     * once reloaded - dead weight that also misleads wasDriving on the first
+     * tick after a restart.
+     */
     var entity: UUID? = null,
     /** Horizontal distance at the last progress check; drives stall detection. */
     var lastDistance: Double = Double.MAX_VALUE,
@@ -47,7 +54,7 @@ class MailRoute(
         tag.putString("State", state.name)
         tag.putDouble("LastDistance", lastDistance)
         tag.putInt("StalledTicks", stalledTicks)
-        entity?.let { tag.putUUID("Entity", it) }
+        // entity is deliberately not persisted - see the field doc comment above.
         return tag
     }
 
@@ -65,7 +72,8 @@ class MailRoute(
                 level = ResourceKey.create(Registry.DIMENSION_REGISTRY, levelId),
                 pos = Vec3(tag.getDouble("X"), tag.getDouble("Y"), tag.getDouble("Z")),
                 state = state,
-                entity = if (tag.hasUUID("Entity")) tag.getUUID("Entity") else null,
+                // entity is not read back - see the field doc comment above; it
+                // starts null and MailRouteService.materialise() spawns fresh as needed.
                 lastDistance = tag.getDouble("LastDistance"),
                 stalledTicks = tag.getInt("StalledTicks"),
             )

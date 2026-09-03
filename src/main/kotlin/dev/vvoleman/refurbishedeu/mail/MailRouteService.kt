@@ -241,13 +241,26 @@ class MailRouteService : SavedData() {
 
     private fun checkStall(level: ServerLevel, route: MailRoute, destVec: Vec3, driving: Boolean): Boolean {
         val distance = Travel.horizontalDistance(route.pos, destVec)
-        // Progress must beat one tick of dead-reckoning travel at the
-        // configured speed, not a fixed constant: a fixed epsilon bigger than
-        // the smallest legal speed's actual per-tick step (blocksPerSecond
-        // can be configured as low as 0.1) would mean dead reckoning could
-        // never be recognised as progressing at all, and every route would
-        // eventually "stall" and be deleted regardless of speed.
-        val epsilon = Travel.perTickStep(MailmanConfig.blocksPerSecond()) * PROGRESS_EPSILON_FACTOR
+        // The progress threshold depends on what is actually moving the
+        // route, and the two must not be conflated:
+        //  - Dead reckoning always covers exactly Travel.perTickStep(bps)
+        //    per tick, so progress must beat a fraction of THAT - a fixed
+        //    constant bigger than the smallest legal speed's per-tick step
+        //    (blocksPerSecond can be configured as low as 0.1) would mean
+        //    dead reckoning could never be recognised as progressing at all.
+        //  - A materialised mailman walks at its own entity speed
+        //    (MOVEMENT_SPEED, unrelated to blocksPerSecond entirely), so
+        //    tying its threshold to bps too means a fast-configured server
+        //    (bps up to the documented 100) demands more per-tick progress
+        //    than a walking mob can ever produce, and a driven route reads
+        //    as permanently stalled. A small constant sized for a walking
+        //    entity is what the threshold used to be before bps-derived
+        //    epsilon existed, and it belongs here, not the dead-reckoning one.
+        val epsilon = if (driving) {
+            DRIVEN_PROGRESS_EPSILON
+        } else {
+            Travel.perTickStep(MailmanConfig.blocksPerSecond()) * DEAD_RECKONING_EPSILON_FACTOR
+        }
         if (distance < route.lastDistance - epsilon) {
             route.lastDistance = distance
             route.stalledTicks = 0
@@ -286,7 +299,12 @@ class MailRouteService : SavedData() {
     companion object {
         private const val ARRIVAL_RANGE = 2.0
         private const val OBSERVE_RANGE_SQR = 128.0 * 128.0
-        private const val PROGRESS_EPSILON_FACTOR = 0.5
+        private const val DEAD_RECKONING_EPSILON_FACTOR = 0.5
+        // The old fixed epsilon, kept as-is for the driven case: a walking
+        // mailman easily clears 0.05 blocks/tick at any normal entity speed,
+        // and unlike the dead-reckoning epsilon this one has no dependency on
+        // blocksPerSecond to get right.
+        private const val DRIVEN_PROGRESS_EPSILON = 0.05
         private const val MATERIALISED_STALL_MULTIPLIER = 4
         private const val STORAGE_ID = "refurbished_eu_mail_routes"
 

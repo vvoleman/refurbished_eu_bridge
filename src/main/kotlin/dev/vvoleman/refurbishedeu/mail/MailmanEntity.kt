@@ -33,11 +33,12 @@ class MailmanEntity(type: EntityType<out PathfinderMob>, level: Level) : Pathfin
     override fun removeWhenFarAway(distance: Double): Boolean = false
 
     /**
-     * Carrying mail makes it invulnerable. A delivery must not be lost to a
-     * skeleton in a chunk the sender will never visit; the route is the
-     * authority on where the mail is, and a dead mailman would orphan it.
+     * Always invulnerable, regardless of what it is carrying. A delivery must
+     * not be lost to a skeleton in a chunk the sender will never visit; the
+     * route is the authority on where the mail is, and a dead mailman would
+     * orphan it.
      */
-    override fun hurt(source: DamageSource?, amount: Float): Boolean = false
+    override fun hurt(source: DamageSource, amount: Float): Boolean = false
 
     override fun addAdditionalSaveData(tag: CompoundTag) {
         super.addAdditionalSaveData(tag)

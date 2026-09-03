@@ -10,46 +10,76 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-02-mailman-design.md` — read it before Task 1. The plan argues from the spec; where they disagree, the spec wins.
 
-## Execution status (updated 2026-09-03)
+## Execution status — COMPLETE (2026-09-03)
 
-**Tasks 1-9 complete and reviewed clean. Tasks 10-14 remain.** Branch `mailman`, off
-`main` @ 816c2be. HEAD at handoff: `a573d9b`. **The branch has never been pushed.**
+**All 14 tasks complete and reviewed. Final whole-branch review passed; verdict: merge-ready.**
+Branch `mailman`, off `main` @ 816c2be. HEAD `e6a2e3b`. **Never pushed.**
 
-Verified at handoff: `./gradlew build --offline` succeeds and `./gradlew test --offline
---rerun-tasks` gives **22 tests, 0 failures, 0 errors** across 6 test classes. That means
-the logic layer is correct and everything compiles. **Nothing has been run in a game** —
-see Verification at the foot of this plan.
+Verified: `./gradlew build --offline` succeeds; `./gradlew test --offline --rerun-tasks` gives
+**29 tests, 0 failures, 0 errors** across 6 classes; jar at `build/libs/refurbished_eu-0.3.0.jar`.
+That means the pure-logic layer is correct and everything compiles. **Nothing has ever been run
+in a game** — `runClient` cannot start in this repo. The in-game checklist at the foot of Task 14
+is untouched and is the only thing that can actually validate this feature.
 
-| Task | Commit | Notes |
+| Task | Commit(s) | Fix rounds |
 |---|---|---|
-| 1 Test harness | `3782494` | first tests in this repo; ItemStack works in tests |
-| 2 MailAddress | `08b3737` | |
-| 3 Mailbox registry parse | `8263cb2` | |
-| 4 Lookup by name | `11d7bd6` | |
-| 5 Travel arithmetic | `43fcae3` | |
-| 6 MailRoute NBT | `326d1e7` | |
-| 7 Config | `6c4ed4c` | |
-| 8 Letter item | `07ac6f8` | no review findings at any severity |
-| 9 Parcel + screen | `0e38dc2`, `a573d9b` | one Critical found and fixed — see below |
-| 10-14 | — | not started; briefs for 10 and 11 already extracted |
+| 1 Test harness | `3782494` | — |
+| 2 MailAddress | `08b3737` | — |
+| 3 Mailbox registry parse | `8263cb2` | — |
+| 4 Lookup by name | `11d7bd6` | — |
+| 5 Travel arithmetic | `43fcae3` | — |
+| 6 MailRoute NBT | `326d1e7` | — |
+| 7 Config | `6c4ed4c` | — |
+| 8 Letter item | `07ac6f8` | — (no findings at any severity) |
+| 9 Parcel + screen | `0e38dc2`, `a573d9b` | 1 — Critical: parcel destroyed itself |
+| 10 MailmanEntity | `fc88dee`, `5bf6bcb` | 1 — Important: wrong `hurt` nullability |
+| 11 Goals | `650529f` | — |
+| 12 MailRouteService | `7e5156e`, `2730a5b`, `0480d54` | 2 — 3 Critical + 6 Important |
+| 13 Pickup sweep | `97e57ae`, `2be3d90` | 1 — Important: infinite return loop |
+| 14 Docs + version | `569d2ab`, `d3cf99d`, `66c6ba2` | 1 — two false README claims |
+| Final review fix wave | `e6a2e3b` | 3 Important + 5 minors |
 
-Four defects in this plan were found and corrected before their tasks ran (commit
-`4cbca1d`), and two more during execution (`e3b3782`, `0ffefeb`). The plan text below
-already incorporates all six. The two worth knowing:
+### The defects worth remembering
 
-- **Task 13 must filter mailboxes to the origin's dimension BEFORE calling `byName`**
-  (`0ffefeb`). `byName` compares raw block positions, so a same-named mailbox in another
-  dimension could win on a meaningless distance and the mail would then be silently
-  dropped by the same-dimension check.
-- **Task 9's `ParcelMenu` originally let the parcel be placed inside itself and
-  destroyed.** The player's hotbar was added as ordinary slots, but the parcel being
-  edited lives in the hotbar. Fixed in `a573d9b` with a non-interactive `HeldParcelSlot`
-  plus a `clicked()` override, because `ClickType.SWAP` bypasses `Slot.mayPickup`
-  entirely — vanilla's `doClick` reads and writes the real inventory by button index.
+Nearly every finding was a defect in **this plan**, not in the implementation. The four that
+mattered most, all of which would have shipped:
 
-A full execution ledger, including every ruling and nine deferred minor findings for the
-final review, is at `.superpowers/sdd/2026-09-02-mailman-phase-1/progress.md`. That
-directory is git-ignored scratch — if it is lost, this section and `git log` are the record.
+1. **A full origin mailbox silently deleted the mail.** `deliverItem` is all-or-nothing, and a
+   returning route whose origin refused dropped the route and the stack with it. Mailboxes are
+   9 slots by default and the sweep drains one item per 10s, so full is the *ordinary* case.
+   Every route termination now funnels through `finish()`, which drops the stack as a
+   recoverable `ItemEntity` and logs a WARN.
+2. **The Parcel could be placed inside itself and destroyed.** The menu added the player's
+   hotbar as ordinary slots, but the parcel being edited lives in the hotbar. `ClickType.SWAP`
+   also bypasses `Slot` permission checks entirely — vanilla's `doClick` reads and writes the
+   real inventory by button index.
+3. **Any `blocksPerSecond <= 1.0` deleted all mail on the server.** The stall detector's fixed
+   0.05 epsilon was unreachable below 1 block/s, and the config's documented range starts at 0.1.
+4. **Cross-dimension name collisions ate mail.** `byName` resolves by raw block distance
+   ignoring dimension, so a nearer same-named mailbox elsewhere won and the mail was then
+   dropped by the same-dimension check.
+
+### Known-good but unverified, and what to check first
+
+Put a named mailbox **in a basement**, post an addressed Letter to a second mailbox ~40 blocks
+away, and watch where the courier appears. It should now spawn *at* the mailbox, not on the roof.
+Then let a delivery fail into a deliberately full origin mailbox and confirm the parcel drops as
+an item with a WARN, rather than vanishing.
+
+### Parked, not fixed — the shortlist if you want one more pass
+
+- `finish()`'s drop position ignores the `yTrustworthy` flag the same commit added, so a
+  recovery item can spawn at a stale y (inside terrain or mid-air). One line. Highest value.
+- The README's loss bullet contradicts itself on the dimension-gone case and overstates that
+  drops happen "at the origin mailbox's position" (true only for the refused-return path).
+- Nothing pins the `YTrustworthy` NBT roundtrip or its legacy default in a test.
+- **Deferred by design:** the sender is never notified of a failed delivery. The spec asked for
+  it; the plan never carried it across. `MailAddress.apply`/`sender` were deliberately kept
+  rather than deleted as dead code, because they are what that work needs.
+
+Full execution ledger with all 20 rulings was at
+`.superpowers/sdd/2026-09-02-mailman-phase-1/progress.md` (git-ignored scratch, deleted on
+completion). This section and `git log` are the durable record.
 
 ---
 

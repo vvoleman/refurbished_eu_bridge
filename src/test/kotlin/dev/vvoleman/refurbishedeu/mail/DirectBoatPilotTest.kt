@@ -67,5 +67,12 @@ class DirectBoatPilotTest {
             steering.yaw > 170.0f || steering.yaw < -170.0f,
             "expected to turn positively through 180, got ${steering.yaw}",
         )
+        // Direction alone would accept a 40-degree lurch across the seam. The
+        // clamp has to hold in the positive direction too, and it is measured
+        // the short way round so the wraparound does not read as 340 degrees.
+        assertTrue(
+            abs(Mth.wrapDegrees(steering.yaw - 170.0f)) <= DirectBoatPilot.MAX_TURN_PER_TICK + 1e-4,
+            "turned ${steering.yaw} in one tick from 170",
+        )
     }
 }

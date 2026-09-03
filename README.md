@@ -107,14 +107,16 @@ to is the target mailbox's name. A Parcel also has its own screen (right-click
 it), but that screen is for its nine slots of *contents*, not its address —
 name it in an anvil the same as a Letter.
 
-Drop an addressed Letter or Parcel into any **named mailbox** and it is picked
-up automatically, without needing to open the mailbox's own UI. From there it
-is carried — physically, over real time, at real distance — to a mailbox with
-the matching name, by a **Mailman** entity that spawns near the mail and walks
-it there. While no player is nearby to watch it walk, the delivery still
-advances by dead reckoning (see `blocksPerSecond` below) so it doesn't stall
-just because nobody's looking; it only materialises into an actual entity once
-a player is close enough to see one.
+Drop an addressed Letter or Parcel into **any mailbox** — the mailbox it's
+posted from does not itself need a name — and it is picked up automatically,
+without needing to open the mailbox's own UI. It is the **destination** that
+must be named: the mail is then carried — physically, over real time, at real
+distance — to whichever mailbox matches that name, by a **Mailman** entity
+that spawns near the mail and walks it there. While no player is nearby to
+watch it walk, the delivery still advances by dead reckoning (see
+`blocksPerSecond` below) so it doesn't stall just because nobody's looking; it
+only materialises into an actual entity once a player is close enough to see
+one.
 
 **Refurbished's own Post Box is untouched.** It still delivers instantly, by
 UUID, through its own UI — that path is unchanged and unaffected by any of
@@ -127,12 +129,14 @@ share the mailbox block; this one is the deliberately slow one.
   mailboxes are matched by name only within the origin's own dimension.
 - **A route that can't reach its target stalls, then returns to sender.** If a
   delivery makes no progress for long enough (open water, an unreachable
-  mailbox, whatever the obstruction), it gives up, carries the mail back to
-  the mailbox it was posted from, and then sits there. It is **not**
-  automatically retried — the returned stack keeps its old address and is
-  ignored by future sweeps until you re-address it (rename it again in an
-  anvil, or edit a parcel's contents) to something other than the target it
-  just failed to reach.
+  mailbox, whatever the obstruction), it gives up and carries the mail back to
+  the mailbox it was posted from. It is **not** automatically retried — the
+  returned stack keeps its old address and is ignored by future sweeps until
+  you re-address it, which an anvil rename is the *only* way to do (editing a
+  Parcel's contents does not touch its address). If the return trip *also*
+  fails — the origin mailbox destroyed or unreachable in the meantime — the
+  mail is lost rather than sitting anywhere; this needs the origin itself to
+  go bad, so it's unlikely, but it can happen.
 - **Delivery is slow by design.** This is the point of the feature, not a
   bug — see `blocksPerSecond` below; a several-thousand-block trip is meant to
   take real minutes.

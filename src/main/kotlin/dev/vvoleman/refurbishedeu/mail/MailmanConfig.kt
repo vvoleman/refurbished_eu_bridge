@@ -17,6 +17,9 @@ object MailmanConfig {
     val indexRefreshTicks: ForgeConfigSpec.IntValue
     val pickupScanTicks: ForgeConfigSpec.IntValue
     val stallTimeoutTicks: ForgeConfigSpec.IntValue
+    val useBoats: ForgeConfigSpec.BooleanValue
+    val minWaterCrossingWidth: ForgeConfigSpec.IntValue
+    val boatCrossingTimeoutTicks: ForgeConfigSpec.IntValue
     val SPEC: ForgeConfigSpec
 
     init {
@@ -58,6 +61,29 @@ object MailmanConfig {
             )
             .defineInRange("stallTimeoutTicks", 1200, 100, 72000)
 
+        useBoats = builder
+            .comment(
+                "Let a mailman cross open water by boat.",
+                "False restores the old behaviour: wide water is undeliverable and",
+                "the mail is carried back to where it was posted."
+            )
+            .define("useBoats", true)
+
+        minWaterCrossingWidth = builder
+            .comment(
+                "Water narrower than this many blocks is waded, not boated.",
+                "Staging a boat launch over a stream looks worse than walking it."
+            )
+            .defineInRange("minWaterCrossingWidth", 6, 2, 64)
+
+        boatCrossingTimeoutTicks = builder
+            .comment(
+                "Abandon a crossing that takes longer than this and swim instead.",
+                "Keep it below stallTimeoutTicks so a stuck boat is dropped while",
+                "the route still has budget left to find another way."
+            )
+            .defineInRange("boatCrossingTimeoutTicks", 600, 100, 24000)
+
         builder.pop()
         SPEC = builder.build()
     }
@@ -71,4 +97,7 @@ object MailmanConfig {
     fun indexRefreshTicks(): Int = read(indexRefreshTicks, 600)
     fun pickupScanTicks(): Int = read(pickupScanTicks, 200)
     fun stallTimeoutTicks(): Int = read(stallTimeoutTicks, 1200)
+    fun useBoats(): Boolean = read(useBoats, true)
+    fun minWaterCrossingWidth(): Int = read(minWaterCrossingWidth, 6)
+    fun boatCrossingTimeoutTicks(): Int = read(boatCrossingTimeoutTicks, 600)
 }

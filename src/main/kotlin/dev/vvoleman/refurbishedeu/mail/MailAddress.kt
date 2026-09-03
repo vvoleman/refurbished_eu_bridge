@@ -43,10 +43,11 @@ object MailAddress {
      *
      * Keyed on the target string itself, not a bare boolean: the sweep skips a
      * stack whose [returnedFrom] still equals its current target, but a player
-     * who re-addresses the stack (anvil rename, or editing a parcel) changes
-     * the target that is compared against, so the stale value simply stops
-     * matching and the stack becomes sweepable again - no separate clearing
-     * hook needed.
+     * who re-addresses the stack with an anvil rename - the only way to
+     * change its address; editing a Parcel's contents does not touch it -
+     * changes the target that is compared against, so the stale value simply
+     * stops matching and the stack becomes sweepable again - no separate
+     * clearing hook needed.
      *
      * Uses [ItemStack.getOrCreateTagElement] rather than [apply]'s
      * whole-tag replacement so this can be stamped onto a stack that already

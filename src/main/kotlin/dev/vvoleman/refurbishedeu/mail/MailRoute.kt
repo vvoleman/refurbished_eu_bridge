@@ -39,6 +39,23 @@ class MailRoute(
     /** Horizontal distance at the last progress check; drives stall detection. */
     var lastDistance: Double = Double.MAX_VALUE,
     var stalledTicks: Int = 0,
+    /**
+     * Whether [pos]'s y coordinate currently reflects a real position rather
+     * than dead reckoning's horizontal-only arithmetic. True whenever [pos]
+     * was just written from a real entity's position or from the origin
+     * mailbox at route creation; false the moment `Travel.advance` moves the
+     * route without a materialised entity backing it. `materialise` only
+     * snaps to the surface heightmap when this is false - otherwise an
+     * indoor or basement mailbox's y would be clobbered on every spawn.
+     *
+     * Defaults to true for a freshly created route (its pos comes straight
+     * off the origin mailbox, which is trustworthy). Old saved routes that
+     * predate this field load as false, matching this class's old behaviour
+     * of unconditionally snapping to the surface - the conservative choice,
+     * since a pre-existing save's y could equally be stale from dead
+     * reckoning.
+     */
+    var yTrustworthy: Boolean = true,
 ) {
 
     fun save(): CompoundTag {
@@ -54,6 +71,7 @@ class MailRoute(
         tag.putString("State", state.name)
         tag.putDouble("LastDistance", lastDistance)
         tag.putInt("StalledTicks", stalledTicks)
+        tag.putBoolean("YTrustworthy", yTrustworthy)
         // entity is deliberately not persisted - see the field doc comment above.
         return tag
     }
@@ -76,6 +94,10 @@ class MailRoute(
                 // starts null and MailRouteService.materialise() spawns fresh as needed.
                 lastDistance = tag.getDouble("LastDistance"),
                 stalledTicks = tag.getInt("StalledTicks"),
+                // Absent on a pre-existing save (getBoolean defaults to false),
+                // which conservatively reproduces this class's old
+                // unconditional-snap behaviour for those routes.
+                yTrustworthy = tag.getBoolean("YTrustworthy"),
             )
         }
     }

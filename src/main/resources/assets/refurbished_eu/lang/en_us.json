@@ -30,6 +30,5 @@
   "item.refurbished_eu.parcel": "Parcel",
   "tooltip.refurbished_eu.parcel_contents": "%s/%s slots used",
   "container.refurbished_eu.parcel": "Parcel",
-  "entity.refurbished_eu.mailman": "Mailman",
-  "item.refurbished_eu.mailman_spawn_egg": "Mailman Spawn Egg"
+  "entity.refurbished_eu.mailman": "Mailman"
 }

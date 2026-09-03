@@ -3,7 +3,8 @@ package dev.vvoleman.refurbishedeu.mail
 import net.minecraftforge.common.ForgeConfigSpec
 
 /**
- * Mailman balance settings, in the same server config file as [transformer].
+ * Mailman balance settings, in their own server config file -
+ * `refurbished_eu-mailman-server.toml` - separate from the transformer's.
  *
  * Server-side so the values are per-world and authoritative; delivery timing
  * must not depend on what a client thinks.

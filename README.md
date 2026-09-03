@@ -127,6 +127,9 @@ share the mailbox block; this one is the deliberately slow one.
 
 - **Same dimension only.** A route can't cross dimensions; Refurbished's
   mailboxes are matched by name only within the origin's own dimension.
+  Refurbished's own deliverable-dimension allow-list is honoured too — a
+  mailbox sitting in a dimension Refurbished itself considers undeliverable
+  never has its mail picked up at all.
 - **A route that can't reach its target stalls, then returns to sender.** If a
   delivery makes no progress for long enough (open water, an unreachable
   mailbox, whatever the obstruction), it gives up and carries the mail back to
@@ -134,9 +137,16 @@ share the mailbox block; this one is the deliberately slow one.
   returned stack keeps its old address and is ignored by future sweeps until
   you re-address it, which an anvil rename is the *only* way to do (editing a
   Parcel's contents does not touch its address). If the return trip *also*
-  fails — the origin mailbox destroyed or unreachable in the meantime — the
-  mail is lost rather than sitting anywhere; this needs the origin itself to
-  go bad, so it's unlikely, but it can happen.
+  fails — the origin mailbox destroyed, unreachable, or (the ordinary case,
+  since a mailbox is only a handful of slots) simply **full** — the mail is
+  never destroyed; it is dropped in the world as an item at the origin
+  mailbox's position, with a warning logged naming the mailbox and the item,
+  so it's recoverable rather than lost. The same applies to every other way a
+  route can end without completing a delivery — a dimension that's gone
+  between ticks, a target and origin that are both unresolvable — except when
+  the route's own dimension itself no longer exists, in which case there is
+  genuinely nowhere left to drop the item and it really is lost; that case is
+  logged too.
 - **Delivery is slow by design.** This is the point of the feature, not a
   bug — see `blocksPerSecond` below; a several-thousand-block trip is meant to
   take real minutes.

@@ -8,6 +8,7 @@ import net.minecraft.resources.ResourceKey
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.Mth
+import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.levelgen.Heightmap
@@ -16,6 +17,7 @@ import net.minecraft.world.phys.Vec3
 import com.mrcrayfish.furniture.refurbished.blockentity.MailboxBlockEntity
 import com.mrcrayfish.furniture.refurbished.mail.DeliveryService
 import dev.vvoleman.refurbishedeu.RefurbishedEuBridge
+import org.apache.logging.log4j.LogManager
 import java.util.UUID
 
 /**
@@ -76,7 +78,15 @@ class MailRouteService : SavedData() {
                 // dimension, most likely. There is nothing left to tick this
                 // route against, and leaving it in the list would park it
                 // against maxActiveRoutes forever, eventually wedging the
-                // whole mail system once 32 of these accumulate.
+                // whole mail system once 32 of these accumulate. There is no
+                // level to drop the carried stack into either, so a WARN log
+                // naming the loss is the best this can do.
+                if (!route.stack.isEmpty) {
+                    LOGGER.warn(
+                        "Mail route {} lost: dimension {} no longer exists - carried stack {} could not be recovered and was destroyed",
+                        route.id, route.level.location(), route.stack,
+                    )
+                }
                 iterator.remove()
                 setDirty()
                 continue
@@ -115,6 +125,10 @@ class MailRouteService : SavedData() {
 
         if (!driving) {
             route.pos = Travel.advance(route.pos, destVec, MailmanConfig.blocksPerSecond(), 1)
+            // Horizontal-only, so from here on route.pos.y is stale until
+            // something re-anchors it to a real position (materialise's
+            // create-branch snaps to the surface for exactly this reason).
+            route.yTrustworthy = false
             // Dead reckoning is the only progress this route will ever make
             // without a materialised entity around to trigger setDirty()
             // itself (materialise/dematerialise/deliver all do). Without
@@ -151,6 +165,11 @@ class MailRouteService : SavedData() {
         if (tickCounter % MailmanConfig.pickupScanTicks() != 0) return
         for (origin in cachedMailboxes) {
             val level = server.getLevel(origin.level) ?: continue
+            // Refurbished's own allow-list, honoured on top of our
+            // same-dimension rule: a dimension it considers undeliverable
+            // must not gain routes either, even though nothing here reads
+            // that flag anywhere else.
+            if (!DeliveryService.isDeliverableDimension(level)) continue
             // Only mailboxes in loaded chunks are swept; an unloaded one has
             // nothing ticking to have put mail in it since the last sweep.
             if (level.chunkSource.getChunkNow(origin.pos.x shr 4, origin.pos.z shr 4) == null) continue
@@ -171,7 +190,7 @@ class MailRouteService : SavedData() {
             if (stack.isEmpty) continue
             if (!isOurMail(stack)) continue
             val target = addressOf(stack) ?: continue
-            if (target.equals(origin.name, ignoreCase = true)) continue
+            if (target.trim().equals(origin.name?.trim(), ignoreCase = true)) continue
 
             // A stack carried back here by a previous failed delivery is left
             // alone until re-addressed to something other than what it just
@@ -230,10 +249,10 @@ class MailRouteService : SavedData() {
     private fun handleUnresolvedDestination(level: ServerLevel, route: MailRoute): Boolean {
         if (route.state == RouteState.RETURNING) {
             // Already heading home, and even that mailbox can't be found now.
-            return finish(level, route)
+            return finish(level, route, "the origin mailbox could not be resolved while returning")
         }
         if (mailboxFor(route.originId, route.level) == null) {
-            return finish(level, route)
+            return finish(level, route, "neither the target nor the origin mailbox could be resolved")
         }
         beginReturn(route)
         return false
@@ -256,7 +275,13 @@ class MailRouteService : SavedData() {
         val existing = route.entity?.let { level.getEntity(it) as? MailmanEntity }
         if (existing != null && existing.isAlive) {
             route.pos = existing.position()
+            route.yTrustworthy = true
             existing.destination = destination
+            // Throttled, not skipped: a continuously-materialised route
+            // never takes the dead-reckoning setDirty() path, so without
+            // this its position and stall bookkeeping would only ever be
+            // saved once (at add()) and rewind to that on every restart.
+            if (tickCounter % PERSIST_THROTTLE_TICKS == 0) setDirty()
             return true
         }
         if (route.entity != null) {
@@ -267,11 +292,20 @@ class MailRouteService : SavedData() {
         if (materialisedCount(level) >= MailmanConfig.maxMaterialisedMailmen()) return false
 
         val mob = RefurbishedEuBridge.MAILMAN.get().create(level) ?: return false
-        // y is meaningless while dead-reckoned, so it is resolved here.
         val x = Mth.floor(route.pos.x)
         val z = Mth.floor(route.pos.z)
-        val surface = level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z)
-        mob.moveTo(route.pos.x, surface.toDouble(), route.pos.z, 0.0f, 0.0f)
+        // Only snap to the surface when route.pos.y is actually meaningless -
+        // i.e. it has been dead-reckoned (horizontal-only) since this route
+        // last had a real, trustworthy position. A y fresh off the origin
+        // mailbox, or off a real entity's last stood position, must be kept
+        // as-is: snapping it unconditionally is what used to spawn an indoor
+        // or basement mailbox's mailman on the roof.
+        val y = if (route.yTrustworthy) {
+            route.pos.y
+        } else {
+            level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z).toDouble()
+        }
+        mob.moveTo(route.pos.x, y, route.pos.z, 0.0f, 0.0f)
         mob.routeId = route.id
         // A copy: route.stack and mob.carried must not be the same mutable
         // instance shared by two owners that both serialise it independently.
@@ -279,6 +313,7 @@ class MailRouteService : SavedData() {
         mob.destination = destination
         level.addFreshEntity(mob)
         route.entity = mob.uuid
+        route.yTrustworthy = true
         setDirty()
         return true
     }
@@ -287,6 +322,7 @@ class MailRouteService : SavedData() {
         val id = route.entity ?: return
         (level.getEntity(id) as? MailmanEntity)?.let {
             route.pos = it.position()
+            route.yTrustworthy = true
             it.discard()
         }
         route.entity = null
@@ -302,17 +338,28 @@ class MailRouteService : SavedData() {
             dematerialise(level, route)
             return true
         }
-        // Refused - queue full, or the mailbox is gone. Take it home.
+        // Refused - queue full (mailboxes are only mailboxInventoryRows * 9
+        // slots, and the sweep drains one item per mailbox per pickupScanTicks,
+        // so this is the ordinary case, not an edge case), or the mailbox is
+        // gone entirely. Take it home.
         if (route.state == RouteState.RETURNING) {
-            // Origin refused it too; there is nowhere left to put it.
-            dematerialise(level, route)
-            return true
+            // Origin refused it too; there is nowhere left to put it in a
+            // mailbox. getBlockEntity above just force-loaded this chunk, so
+            // the destination position is a good, loaded place to drop it.
+            val dropPos = Vec3(destination.x + 0.5, destination.y.toDouble(), destination.z + 0.5)
+            return finish(level, route, "the origin mailbox refused the returned item (full, or gone)", dropPos)
         }
         beginReturn(route)
         return false
     }
 
     private fun checkStall(level: ServerLevel, route: MailRoute, destVec: Vec3, driving: Boolean): Boolean {
+        // Throttled, not skipped: unlike the dead-reckoning branch in
+        // tickRoute, a driven route's lastDistance/stalledTicks bookkeeping
+        // below has no other setDirty() call on its path, so without this a
+        // continuously-materialised route would only ever be saved once (at
+        // add()) and rewind its stall progress on every restart.
+        if (driving && tickCounter % PERSIST_THROTTLE_TICKS == 0) setDirty()
         val distance = Travel.horizontalDistance(route.pos, destVec)
         // The progress threshold depends on what is actually moving the
         // route, and the two must not be conflated:
@@ -349,12 +396,30 @@ class MailRouteService : SavedData() {
         if (route.stalledTicks < timeout) return false
 
         // No progress for long enough: open water, or a mailbox that can't be walked to.
-        if (route.state == RouteState.RETURNING) return finish(level, route)
+        if (route.state == RouteState.RETURNING) {
+            return finish(level, route, "the route stalled ($timeout ticks with no progress) while returning to origin")
+        }
         beginReturn(route)
         return false
     }
 
-    private fun finish(level: ServerLevel, route: MailRoute): Boolean {
+    /**
+     * The single place a route stops being tracked. Every path that ends a
+     * route without having placed its stack in a mailbox goes through here,
+     * so a future one cannot bypass the guarantee that a carried stack is
+     * never simply discarded: it is dropped into the world as an item
+     * instead, and a WARN is logged naming the route and why. [pos] defaults
+     * to the route's own last known position, which is the best available
+     * stand-in for "the mailbox" when no mailbox could actually be resolved.
+     */
+    private fun finish(level: ServerLevel, route: MailRoute, reason: String, pos: Vec3 = route.pos): Boolean {
+        if (!route.stack.isEmpty) {
+            LOGGER.warn(
+                "Mail route {} lost: {} - dropping carried stack {} at {} in {}",
+                route.id, reason, route.stack, pos, route.level.location(),
+            )
+            level.addFreshEntity(ItemEntity(level, pos.x, pos.y, pos.z, route.stack.copy()))
+        }
         dematerialise(level, route)
         return true
     }
@@ -400,7 +465,18 @@ class MailRouteService : SavedData() {
         // blocksPerSecond to get right.
         private const val DRIVEN_PROGRESS_EPSILON = 0.05
         private const val MATERIALISED_STALL_MULTIPLIER = 4
+        // How often a continuously-materialised route's position and stall
+        // bookkeeping get flagged dirty, in ticks. These fields have no other
+        // setDirty() call on their path (unlike dead reckoning, which calls
+        // it every tick), so without any throttle at all they would either
+        // never persist or, at the other extreme, mark the whole service
+        // dirty every single tick for every driven route purely to save a
+        // handful of doubles that only matter across a restart. 100 ticks
+        // (5 seconds) bounds how much of a walking mailman's progress a
+        // crash can rewind without costing more than that.
+        private const val PERSIST_THROTTLE_TICKS = 100
         private const val STORAGE_ID = "refurbished_eu_mail_routes"
+        private val LOGGER = LogManager.getLogger()
 
         fun get(level: ServerLevel): MailRouteService =
             level.server.overworld().dataStorage.computeIfAbsent(

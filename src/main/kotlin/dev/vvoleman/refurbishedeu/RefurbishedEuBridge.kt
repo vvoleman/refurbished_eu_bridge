@@ -22,7 +22,6 @@ import net.minecraft.world.level.block.state.BlockBehaviour
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.material.Material
 import net.minecraftforge.api.distmarker.Dist
-import net.minecraftforge.common.ForgeSpawnEggItem
 import net.minecraftforge.common.extensions.IForgeMenuType
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent
@@ -92,10 +91,6 @@ object RefurbishedEuBridge {
             .sized(0.6f, 1.95f)
             .clientTrackingRange(10)
             .build("mailman")
-    }
-
-    val MAILMAN_EGG: RegistryObject<Item> = ITEMS.register("mailman_spawn_egg") {
-        ForgeSpawnEggItem(MAILMAN, 0x3F3F5C, 0xB08040, Item.Properties().tab(CreativeModeTab.TAB_MISC))
     }
 
     /** One block entity type shared by all three variants; the tier comes from the block. */

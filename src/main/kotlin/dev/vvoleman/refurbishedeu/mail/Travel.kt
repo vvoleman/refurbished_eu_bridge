@@ -29,4 +29,14 @@ object Travel {
         val scale = step / remaining
         return Vec3(from.x + (to.x - from.x) * scale, from.y, from.z + (to.z - from.z) * scale)
     }
+
+    /**
+     * How far one tick of dead reckoning covers at the given speed. Exposed
+     * so callers judging "did this route make progress" can compare against
+     * the actual step size instead of a fixed constant - a fixed threshold
+     * bigger than the smallest legal speed's per-tick step (blocksPerSecond
+     * can be configured as low as 0.1) would mean dead reckoning could never
+     * be recognised as progressing at all.
+     */
+    fun perTickStep(blocksPerSecond: Double): Double = blocksPerSecond / TICKS_PER_SECOND
 }

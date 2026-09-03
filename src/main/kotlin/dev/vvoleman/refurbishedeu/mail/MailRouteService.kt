@@ -4,9 +4,11 @@ import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.nbt.Tag
+import net.minecraft.resources.ResourceKey
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.entity.MobSpawnType
+import net.minecraft.util.Mth
+import net.minecraft.world.level.Level
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.level.saveddata.SavedData
 import net.minecraft.world.phys.Vec3
@@ -23,10 +25,20 @@ class MailRouteService : SavedData() {
 
     private val routes = mutableListOf<MailRoute>()
     private var cachedMailboxes: List<MailboxRef> = emptyList()
+    private var mailboxById: Map<UUID, MailboxRef> = emptyMap()
     private var indexAge = Int.MAX_VALUE
+
+    /**
+     * Reserved for Task 13's mailbox pickup sweep (a periodic scan of every
+     * mailbox for outgoing mail), which is meant to throttle itself off this
+     * the same way indexAge throttles refreshIndex. Nothing in this file
+     * reads it yet - that is expected, not a bug, so do not delete it for
+     * being "unused".
+     */
     private var tickCounter = 0
 
-    fun routes(): List<MailRoute> = routes
+    /** A defensive copy: the backing list must only ever be mutated through this class. */
+    fun routes(): List<MailRoute> = routes.toList()
     fun mailboxes(): List<MailboxRef> = cachedMailboxes
 
     fun add(route: MailRoute): Boolean {
@@ -45,6 +57,7 @@ class MailRouteService : SavedData() {
         indexAge = 0
         val service = DeliveryService.get(server).orElse(null) ?: return
         cachedMailboxes = MailboxIndex.parse(service.save(CompoundTag()))
+        mailboxById = cachedMailboxes.associateBy { it.id }
     }
 
     fun tick(server: MinecraftServer) {
@@ -54,7 +67,16 @@ class MailRouteService : SavedData() {
         while (iterator.hasNext()) {
             val route = iterator.next()
             val level = server.getLevel(route.level)
-            if (level == null) continue
+            if (level == null) {
+                // The dimension itself is gone - a removed datapack
+                // dimension, most likely. There is nothing left to tick this
+                // route against, and leaving it in the list would park it
+                // against maxActiveRoutes forever, eventually wedging the
+                // whole mail system once 32 of these accumulate.
+                iterator.remove()
+                setDirty()
+                continue
+            }
             if (tickRoute(level, route)) {
                 iterator.remove()
                 setDirty()
@@ -64,25 +86,81 @@ class MailRouteService : SavedData() {
 
     /** @return true when the route is finished and should be dropped. */
     private fun tickRoute(level: ServerLevel, route: MailRoute): Boolean {
-        val destination = destinationOf(route) ?: return finish(level, route)
+        val destination = destinationOf(route) ?: return handleUnresolvedDestination(level, route)
         val destVec = Vec3(destination.x + 0.5, destination.y.toDouble(), destination.z + 0.5)
 
-        if (isObservable(level, route.pos)) {
+        // Whether an entity was already driving this route as of the end of
+        // last tick, so a fresh materialisation can be told apart from a
+        // route that has been walking for a while.
+        val wasDriving = route.entity != null
+
+        // materialise() returns false for every reason no entity ends up
+        // driving the route this tick - the materialised-mailmen cap was
+        // reached, EntityType.create() returned null, whatever. Dead
+        // reckoning must pick up the slack whenever that happens, not only
+        // when the route was never observable in the first place - otherwise
+        // a route that is observable but capped out simply stops advancing,
+        // its stall timer keeps running against an unmoving position, and it
+        // is eventually deleted for "failing to progress" while frozen.
+        val driving = if (isObservable(level, route.pos)) {
             materialise(level, route, destination)
         } else {
             dematerialise(level, route)
+            false
+        }
+
+        if (!driving) {
             route.pos = Travel.advance(route.pos, destVec, MailmanConfig.blocksPerSecond(), 1)
+            // Dead reckoning is the only progress this route will ever make
+            // without a materialised entity around to trigger setDirty()
+            // itself (materialise/dematerialise/deliver all do). Without
+            // this, a purely dead-reckoning route only gets saved once, when
+            // add() first flags it dirty, and every restart after that
+            // rewinds it to wherever it happened to be at the last autosave.
+            setDirty()
+        } else if (!wasDriving) {
+            // Just materialised. Forget whatever stall bookkeeping dead
+            // reckoning built up - a real mailman pathing around an obstacle
+            // must be judged against where it started walking, not against
+            // arithmetic's straight-line best.
+            route.lastDistance = Travel.horizontalDistance(route.pos, destVec)
+            route.stalledTicks = 0
         }
 
         if (Travel.horizontalDistance(route.pos, destVec) <= ARRIVAL_RANGE) {
             return deliver(level, route, destination)
         }
-        return checkStall(level, route, destVec)
+        return checkStall(level, route, destVec, driving)
     }
+
+    private fun mailboxFor(id: UUID, level: ResourceKey<Level>): MailboxRef? =
+        mailboxById[id]?.takeIf { it.level == level }
 
     private fun destinationOf(route: MailRoute): BlockPos? {
         val wanted = if (route.state == RouteState.RETURNING) route.originId else route.targetId
-        return cachedMailboxes.firstOrNull { it.id == wanted }?.pos
+        return mailboxFor(wanted, route.level)?.pos
+    }
+
+    /**
+     * The wanted mailbox (target, or origin while returning) can't be found -
+     * broken by a player, most likely. Deleting the route outright would
+     * destroy the mail even though the origin mailbox usually still exists
+     * and is the obvious place to send it back to, so this only gives up
+     * when the origin is unresolvable too.
+     */
+    private fun handleUnresolvedDestination(level: ServerLevel, route: MailRoute): Boolean {
+        if (route.state == RouteState.RETURNING) {
+            // Already heading home, and even that mailbox can't be found now.
+            return finish(level, route)
+        }
+        if (mailboxFor(route.originId, route.level) == null) {
+            return finish(level, route)
+        }
+        route.state = RouteState.RETURNING
+        route.lastDistance = Double.MAX_VALUE
+        route.stalledTicks = 0
+        setDirty()
+        return false
     }
 
     /**
@@ -91,31 +169,42 @@ class MailRouteService : SavedData() {
      * chunks along behind it.
      */
     private fun isObservable(level: ServerLevel, pos: Vec3): Boolean {
-        val chunkX = (pos.x.toInt()) shr 4
-        val chunkZ = (pos.z.toInt()) shr 4
+        val chunkX = Mth.floor(pos.x) shr 4
+        val chunkZ = Mth.floor(pos.z) shr 4
         if (level.chunkSource.getChunkNow(chunkX, chunkZ) == null) return false
         return level.players().any { it.distanceToSqr(pos.x, it.y, pos.z) < OBSERVE_RANGE_SQR }
     }
 
-    private fun materialise(level: ServerLevel, route: MailRoute, destination: BlockPos) {
+    /** @return true when an entity is now (or still) driving this route. */
+    private fun materialise(level: ServerLevel, route: MailRoute, destination: BlockPos): Boolean {
         val existing = route.entity?.let { level.getEntity(it) as? MailmanEntity }
         if (existing != null && existing.isAlive) {
             route.pos = existing.position()
             existing.destination = destination
-            return
+            return true
         }
-        if (materialisedCount(level) >= MailmanConfig.maxMaterialisedMailmen()) return
+        if (route.entity != null) {
+            // Stale reference - whatever was here is gone. Nothing to clean
+            // up beyond forgetting it; materialisedCount() already ignores it.
+            route.entity = null
+        }
+        if (materialisedCount(level) >= MailmanConfig.maxMaterialisedMailmen()) return false
 
-        val mob = RefurbishedEuBridge.MAILMAN.get().create(level) ?: return
+        val mob = RefurbishedEuBridge.MAILMAN.get().create(level) ?: return false
         // y is meaningless while dead-reckoned, so it is resolved here.
-        val surface = level.getHeight(Heightmap.Types.WORLD_SURFACE, route.pos.x.toInt(), route.pos.z.toInt())
+        val x = Mth.floor(route.pos.x)
+        val z = Mth.floor(route.pos.z)
+        val surface = level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z)
         mob.moveTo(route.pos.x, surface.toDouble(), route.pos.z, 0.0f, 0.0f)
         mob.routeId = route.id
-        mob.carried = route.stack
+        // A copy: route.stack and mob.carried must not be the same mutable
+        // instance shared by two owners that both serialise it independently.
+        mob.carried = route.stack.copy()
         mob.destination = destination
         level.addFreshEntity(mob)
         route.entity = mob.uuid
         setDirty()
+        return true
     }
 
     private fun dematerialise(level: ServerLevel, route: MailRoute) {
@@ -150,15 +239,28 @@ class MailRouteService : SavedData() {
         return false
     }
 
-    private fun checkStall(level: ServerLevel, route: MailRoute, destVec: Vec3): Boolean {
+    private fun checkStall(level: ServerLevel, route: MailRoute, destVec: Vec3, driving: Boolean): Boolean {
         val distance = Travel.horizontalDistance(route.pos, destVec)
-        if (distance < route.lastDistance - STALL_EPSILON) {
+        // Progress must beat one tick of dead-reckoning travel at the
+        // configured speed, not a fixed constant: a fixed epsilon bigger than
+        // the smallest legal speed's actual per-tick step (blocksPerSecond
+        // can be configured as low as 0.1) would mean dead reckoning could
+        // never be recognised as progressing at all, and every route would
+        // eventually "stall" and be deleted regardless of speed.
+        val epsilon = Travel.perTickStep(MailmanConfig.blocksPerSecond()) * PROGRESS_EPSILON_FACTOR
+        if (distance < route.lastDistance - epsilon) {
             route.lastDistance = distance
             route.stalledTicks = 0
             return false
         }
         route.stalledTicks++
-        if (route.stalledTicks < MailmanConfig.stallTimeoutTicks()) return false
+        // A materialised mailman legitimately moves away from its
+        // destination sometimes - routing around a lake, backing out of a
+        // dead end - in a way straight-line dead reckoning never does, so it
+        // gets a longer leash before that reads as stalled rather than as a
+        // detour.
+        val timeout = MailmanConfig.stallTimeoutTicks() * (if (driving) MATERIALISED_STALL_MULTIPLIER else 1)
+        if (route.stalledTicks < timeout) return false
 
         // No progress for long enough: open water, or a mailbox that can't be walked to.
         if (route.state == RouteState.RETURNING) return finish(level, route)
@@ -184,7 +286,8 @@ class MailRouteService : SavedData() {
     companion object {
         private const val ARRIVAL_RANGE = 2.0
         private const val OBSERVE_RANGE_SQR = 128.0 * 128.0
-        private const val STALL_EPSILON = 0.05
+        private const val PROGRESS_EPSILON_FACTOR = 0.5
+        private const val MATERIALISED_STALL_MULTIPLIER = 4
         private const val STORAGE_ID = "refurbished_eu_mail_routes"
 
         fun get(level: ServerLevel): MailRouteService =

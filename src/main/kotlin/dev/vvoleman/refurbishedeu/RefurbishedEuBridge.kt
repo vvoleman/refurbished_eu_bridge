@@ -1,9 +1,18 @@
 package dev.vvoleman.refurbishedeu
 
 import com.mojang.datafixers.types.Type
+import dev.vvoleman.refurbishedeu.mail.LetterItem
+import dev.vvoleman.refurbishedeu.mail.MailBoatEntity
+import dev.vvoleman.refurbishedeu.mail.MailRouteService
+import dev.vvoleman.refurbishedeu.mail.MailmanConfig
+import dev.vvoleman.refurbishedeu.mail.MailmanEntity
+import dev.vvoleman.refurbishedeu.mail.ParcelItem
+import dev.vvoleman.refurbishedeu.mail.ParcelMenu
 import net.minecraft.core.BlockPos
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.sounds.SoundEvent
+import net.minecraft.world.entity.EntityType
+import net.minecraft.world.entity.MobCategory
 import net.minecraft.world.inventory.MenuType
 import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.CreativeModeTab
@@ -15,6 +24,8 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.material.Material
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.common.extensions.IForgeMenuType
+import net.minecraftforge.event.TickEvent
+import net.minecraftforge.event.entity.EntityAttributeCreationEvent
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.fml.ModList
 import net.minecraftforge.fml.ModLoadingContext
@@ -24,6 +35,7 @@ import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent
 import net.minecraftforge.registries.DeferredRegister
 import net.minecraftforge.registries.ForgeRegistries
 import net.minecraftforge.registries.RegistryObject
+import thedarkcolour.kotlinforforge.forge.FORGE_BUS
 import thedarkcolour.kotlinforforge.forge.MOD_BUS
 
 @Mod(RefurbishedEuBridge.ID)
@@ -35,6 +47,7 @@ object RefurbishedEuBridge {
     private val BLOCK_ENTITIES = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, ID)
     private val MENUS = DeferredRegister.create(ForgeRegistries.MENU_TYPES, ID)
     private val SOUNDS = DeferredRegister.create(ForgeRegistries.SOUND_EVENTS, ID)
+    private val ENTITIES = DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, ID)
 
     val TRANSFORMERS: Map<TransformerTier, RegistryObject<Block>> =
         TransformerTier.values().associateWith { tier ->
@@ -57,6 +70,49 @@ object RefurbishedEuBridge {
                 )
             }
         }
+
+    val LETTER: RegistryObject<Item> = ITEMS.register("letter") {
+        LetterItem(Item.Properties().stacksTo(16).tab(CreativeModeTab.TAB_MISC))
+    }
+
+    val PARCEL: RegistryObject<Item> = ITEMS.register("parcel") {
+        ParcelItem(Item.Properties().stacksTo(1).tab(CreativeModeTab.TAB_MISC))
+    }
+
+    val PARCEL_MENU: RegistryObject<MenuType<ParcelMenu>> =
+        MENUS.register("parcel") {
+            IForgeMenuType.create { containerId, inventory, _ ->
+                val held = inventory.player.mainHandItem
+                ParcelMenu(containerId, inventory, held, ParcelItem.asContainer(held))
+            }
+        }
+
+    /**
+     * CREATURE, not MISC. MISC is the bucket for boats, arrows and dropped
+     * items - things minimap and radar mods deliberately skip so they do not
+     * paint every stick on the ground - and a mailman walking a delivery is a
+     * creature a player should be able to find. The only field the two
+     * categories differ in is maxInstancesPerChunk (-1 vs 10); isFriendly,
+     * isPersistent and despawn distance are identical, and removeWhenFarAway
+     * already opts out of despawning. The one consequence is that materialised
+     * mailmen now count toward the passive spawn cap, which maxMaterialisedMailmen
+     * (8 by default) bounds. Nothing registers a spawn placement, so they are
+     * still never spawned naturally.
+     */
+    val MAILMAN: RegistryObject<EntityType<MailmanEntity>> = ENTITIES.register("mailman") {
+        EntityType.Builder.of(::MailmanEntity, MobCategory.CREATURE)
+            .sized(0.6f, 1.95f)
+            .clientTrackingRange(10)
+            .build("mailman")
+    }
+
+    /** Dimensions and tracking range copied from vanilla EntityType.BOAT. */
+    val MAIL_BOAT: RegistryObject<EntityType<MailBoatEntity>> = ENTITIES.register("mail_boat") {
+        EntityType.Builder.of(::MailBoatEntity, MobCategory.MISC)
+            .sized(1.375f, 0.5625f)
+            .clientTrackingRange(10)
+            .build("mail_boat")
+    }
 
     /** One block entity type shared by all three variants; the tier comes from the block. */
     val EU_TRANSFORMER_BE: RegistryObject<BlockEntityType<TransformerBlockEntity>> =
@@ -100,11 +156,21 @@ object RefurbishedEuBridge {
         BLOCK_ENTITIES.register(MOD_BUS)
         MENUS.register(MOD_BUS)
         SOUNDS.register(MOD_BUS)
+        ENTITIES.register(MOD_BUS)
 
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, TransformerConfig.SPEC)
+        ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, MailmanConfig.SPEC, "refurbished_eu-mailman-server.toml")
         ModNetwork.register()
 
         MOD_BUS.addListener(::commonSetup)
+        MOD_BUS.addListener(::onEntityAttributes)
+
+        FORGE_BUS.addListener<TickEvent.ServerTickEvent> { event ->
+            if (event.phase == TickEvent.Phase.END) {
+                val level = event.server.overworld()
+                MailRouteService.get(level).tick(event.server)
+            }
+        }
 
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
             Runnable { ClientSetup.register(MOD_BUS) }
@@ -120,6 +186,10 @@ object RefurbishedEuBridge {
         if (ModList.get().isLoaded("computercraft")) {
             event.enqueueWork { CcCompat.register() }
         }
+    }
+
+    private fun onEntityAttributes(event: EntityAttributeCreationEvent) {
+        event.put(MAILMAN.get(), MailmanEntity.attributes().build())
     }
 
     fun id(path: String) = ResourceLocation(ID, path)

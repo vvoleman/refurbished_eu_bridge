@@ -96,6 +96,139 @@ CC: Tweaked is optional. Without it the peripheral is simply never registered.
 
 ---
 
+## Mail
+
+A second, slower delivery path alongside Refurbished's own Post Box, built on
+two new items and a walking courier.
+
+**Letter** and **Parcel** are addressed by **naming the stack in an anvil** —
+there is no addressing screen for either item. Whatever you rename the stack
+to is the target mailbox's name. A Parcel also has its own screen (right-click
+it), but that screen is for its nine slots of *contents*, not its address —
+name it in an anvil the same as a Letter.
+
+Drop an addressed Letter or Parcel into **any mailbox** — the mailbox it's
+posted from does not itself need a name — and it is picked up automatically,
+without needing to open the mailbox's own UI. It is the **destination** that
+must be named: the mail is then carried — physically, over real time, at real
+distance — to whichever mailbox matches that name, by a **Mailman** entity
+that spawns near the mail and walks it there. While no player is nearby to
+watch it walk, the delivery still advances by dead reckoning (see
+`blocksPerSecond` below) so it doesn't stall just because nobody's looking; it
+only materialises into an actual entity once a player is close enough to see
+one.
+
+**Refurbished's own Post Box is untouched.** It still delivers instantly, by
+UUID, through its own UI — that path is unchanged and unaffected by any of
+this. Mail and Post Box packages are two independent systems that happen to
+share the mailbox block; this one is the deliberately slow one.
+
+### Getting unstuck
+
+Pathfinding searches a bounded number of positions, and escaping somewhere like
+a ravine floor means first walking *away* from the mailbox — which is the last
+thing the search tries. A mailman can therefore end up somewhere with a
+perfectly good way out that it never finds.
+
+Two things handle it. The search is given four times the usual budget, which
+costs nothing on paths that already work and buys a much wider look around an
+obstacle. And if a mailman still makes no progress for half of
+`stallTimeoutTicks`, it is nudged `stuckHopBlocks` along the straight line
+toward its mailbox, repeating every half-timeout until it either gets going or
+the route is declared undeliverable as before.
+
+The nudge is silent and only ever puts the mailman somewhere it could have
+walked to — standing on solid ground, in a loaded chunk, never inside terrain
+or water. If there's nowhere suitable it doesn't move at all. It also does
+*not* reset the stall clock, so a mailman that can't path anywhere still gives
+up on schedule rather than hopping the whole way to its destination. Set
+`stuckHopBlocks = 0` to turn it off.
+
+### Seeing where one is going
+
+Look at a mailman and its destination appears above its head — `→ Bakery` while
+it is carrying mail out, `↩ Home` while it is bringing an undeliverable letter
+back to where it started. An unnamed origin mailbox shows its coordinates
+instead.
+
+The tag follows vanilla's name-tag rules for mobs: it is drawn only while the
+mailman is under your crosshair, not through walls, so several deliveries in
+flight at once don't clutter the view. Mailmen are registered as `creature`
+rather than `misc`, so minimap and radar mods that show mobs should list them.
+
+### Crossing water
+
+A mailman that meets open water at least `minWaterCrossingWidth` blocks across
+walks to the shore, launches a boat, steers across and carries on from the far
+bank. The boat belongs to the delivery: it appears when the crossing starts and
+is gone when it ends, and it holds one passenger so it cannot pick up livestock
+on the way.
+
+Narrower water is waded rather than boated. If a crossing takes longer than
+`boatCrossingTimeoutTicks` the boat is abandoned and the mailman swims, which is
+what it did before boats existed. Set `useBoats = false` to restore that
+everywhere.
+
+Steering is straight-line, so winding rivers and islands mid-channel are not
+solved — the boat times out and the mailman swims.
+
+### Behavioural limits
+
+- **Same dimension only.** A route can't cross dimensions; Refurbished's
+  mailboxes are matched by name only within the origin's own dimension.
+  Refurbished's own deliverable-dimension allow-list is honoured too — a
+  mailbox sitting in a dimension Refurbished itself considers undeliverable
+  never has its mail picked up at all.
+- **A route that can't reach its target stalls, then returns to sender.** If a
+  delivery makes no progress for long enough (an unreachable mailbox, water too
+  wide or too tangled to boat across, whatever the obstruction), it gives up
+  and carries the mail back to the mailbox it was posted from. It is **not**
+  automatically retried — the
+  returned stack keeps its old address and is ignored by future sweeps until
+  you re-address it, which an anvil rename is the *only* way to do (editing a
+  Parcel's contents does not touch its address). If the return trip *also*
+  fails — the origin mailbox destroyed, unreachable, or (the ordinary case,
+  since a mailbox is only a handful of slots) simply **full** — the mail is
+  never destroyed; it is dropped in the world as an item at the origin
+  mailbox's position, with a warning logged naming the mailbox and the item,
+  so it's recoverable rather than lost. The same applies to every other way a
+  route can end without completing a delivery — a dimension that's gone
+  between ticks, a target and origin that are both unresolvable — except when
+  the route's own dimension itself no longer exists, in which case there is
+  genuinely nowhere left to drop the item and it really is lost; that case is
+  logged too.
+- **Delivery is slow by design.** This is the point of the feature, not a
+  bug — see `blocksPerSecond` below; a several-thousand-block trip is meant to
+  take real minutes.
+- **Duplicate mailbox names resolve to the nearest one.** Refurbished allows
+  two mailboxes with the same name; if that happens, mail addressed to that
+  name goes to whichever one is closer to the mailbox it was posted from.
+
+### The `[mailman]` config block
+
+Mailman settings live in their **own** server config file, separate from the
+transformer's — `<world>/serverconfig/refurbished_eu-mailman-server.toml`:
+
+```toml
+[mailman]
+    blocksPerSecond = 4.0        # dead-reckoning speed while nobody is watching
+    maxActiveRoutes = 32         # concurrent deliveries server-wide
+    maxMaterialisedMailmen = 8   # real mailman entities that may exist at once
+    indexRefreshTicks = 600      # how often the mailbox index is rebuilt
+    pickupScanTicks = 200        # how often mailboxes are swept for outgoing mail
+    stallTimeoutTicks = 1200     # ticks without progress before a route gives up
+    stuckHopBlocks = 20          # nudge a stuck mailman this far along; 0 disables
+    useBoats = true              # cross open water by boat
+    minWaterCrossingWidth = 6    # water narrower than this is waded, not boated
+    boatCrossingTimeoutTicks = 600  # abandon a crossing taking longer than this
+```
+
+`blocksPerSecond` only governs dead reckoning — a materialised mailman walks
+at its own entity speed instead. At the default of 4, a 5000-block delivery
+takes roughly 20 minutes.
+
+---
+
 ## Configuration
 
 The config is a **server** config, so it lives per-world at
@@ -202,10 +335,23 @@ name `f_60439_`. That field doesn't exist in a Mojmap dev runtime, where it is
 were found matching f_60439_"* before any of our code runs.
 
 The three pack mods are therefore deliberately kept off the dev runtime
-classpath, which leaves nothing to test against in dev.
+classpath, which leaves nothing to run in dev.
 
-**Test by building the jar and installing it into the real pack**, where SRG
-names are correct.
+There are, however, JUnit tests covering the pure-logic layer (mailbox
+resolution, route state, distance/timing math) that need none of that
+classpath. Run them with:
+
+```bash
+./gradlew test
+```
+
+A green build and green tests mean the logic they cover is correct and
+everything compiles — they are not a substitute for running the game. Nothing
+in this mod has ever been run in an actual client or server; the game itself
+still cannot be started in dev for the reason above.
+
+**Exercise the game by building the jar and installing it into the real
+pack**, where SRG names are correct.
 
 ---
 

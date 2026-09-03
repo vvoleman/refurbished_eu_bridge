@@ -185,7 +185,20 @@ class UseBoatGoal(
     private fun board(plan: Crossing) {
         val level = mob.level as? ServerLevel ?: return
         val spawned = RefurbishedEuBridge.MAIL_BOAT.get().create(level) ?: return
-        spawned.moveTo(plan.launch.x + 0.5, plan.launch.y.toDouble(), plan.launch.z + 0.5, mob.yRot, 0.0f)
+        // ON TOP of the water column, not in it. moveTo places the feet, and a
+        // boat spawned with its hitbox inside water reads as UNDER_WATER, which
+        // in Boat.floatBoat() has a NEGATIVE terminal velocity - it sinks for
+        // good and ejects its passenger after 60 out-of-control ticks.
+        // Buoyancy lives only on floatBoat()'s IN_AIR -> water transition, so
+        // the boat has to arrive from the air: one tick of falling and it snaps
+        // to the surface, which is also how a player-placed boat behaves.
+        spawned.moveTo(
+            plan.launch.x + 0.5,
+            plan.launch.y + 1.0,
+            plan.launch.z + 0.5,
+            mob.yRot,
+            0.0f,
+        )
         level.addFreshEntity(spawned)
         if (!mob.startRiding(spawned)) {
             // Nothing will own this boat if the mailman could not get in.

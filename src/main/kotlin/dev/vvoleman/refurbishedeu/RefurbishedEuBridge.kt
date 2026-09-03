@@ -87,8 +87,20 @@ object RefurbishedEuBridge {
             }
         }
 
+    /**
+     * CREATURE, not MISC. MISC is the bucket for boats, arrows and dropped
+     * items - things minimap and radar mods deliberately skip so they do not
+     * paint every stick on the ground - and a mailman walking a delivery is a
+     * creature a player should be able to find. The only field the two
+     * categories differ in is maxInstancesPerChunk (-1 vs 10); isFriendly,
+     * isPersistent and despawn distance are identical, and removeWhenFarAway
+     * already opts out of despawning. The one consequence is that materialised
+     * mailmen now count toward the passive spawn cap, which maxMaterialisedMailmen
+     * (8 by default) bounds. Nothing registers a spawn placement, so they are
+     * still never spawned naturally.
+     */
     val MAILMAN: RegistryObject<EntityType<MailmanEntity>> = ENTITIES.register("mailman") {
-        EntityType.Builder.of(::MailmanEntity, MobCategory.MISC)
+        EntityType.Builder.of(::MailmanEntity, MobCategory.CREATURE)
             .sized(0.6f, 1.95f)
             .clientTrackingRange(10)
             .build("mailman")

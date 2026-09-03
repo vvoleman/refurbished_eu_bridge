@@ -123,6 +123,18 @@ UUID, through its own UI — that path is unchanged and unaffected by any of
 this. Mail and Post Box packages are two independent systems that happen to
 share the mailbox block; this one is the deliberately slow one.
 
+### Seeing where one is going
+
+Look at a mailman and its destination appears above its head — `→ Bakery` while
+it is carrying mail out, `↩ Home` while it is bringing an undeliverable letter
+back to where it started. An unnamed origin mailbox shows its coordinates
+instead.
+
+The tag follows vanilla's name-tag rules for mobs: it is drawn only while the
+mailman is under your crosshair, not through walls, so several deliveries in
+flight at once don't clutter the view. Mailmen are registered as `creature`
+rather than `misc`, so minimap and radar mods that show mobs should list them.
+
 ### Crossing water
 
 A mailman that meets open water at least `minWaterCrossingWidth` blocks across

@@ -1,6 +1,7 @@
 package dev.vvoleman.refurbishedeu.mail
 
 import net.minecraft.core.BlockPos
+import net.minecraft.network.chat.Component
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.nbt.Tag
@@ -100,7 +101,8 @@ class MailRouteService : SavedData() {
 
     /** @return true when the route is finished and should be dropped. */
     private fun tickRoute(level: ServerLevel, route: MailRoute): Boolean {
-        val destination = destinationOf(route) ?: return handleUnresolvedDestination(level, route)
+        val mailbox = destinationOf(route) ?: return handleUnresolvedDestination(level, route)
+        val destination = mailbox.pos
         val destVec = Vec3(destination.x + 0.5, destination.y.toDouble(), destination.z + 0.5)
 
         // Whether an entity was already driving this route as of the end of
@@ -117,7 +119,7 @@ class MailRouteService : SavedData() {
         // its stall timer keeps running against an unmoving position, and it
         // is eventually deleted for "failing to progress" while frozen.
         val driving = if (isObservable(level, route.pos)) {
-            materialise(level, route, destination)
+            materialise(level, route, mailbox)
         } else {
             dematerialise(level, route)
             false
@@ -234,9 +236,15 @@ class MailRouteService : SavedData() {
     private fun addressOf(stack: ItemStack): String? =
         MailAddress.target(stack) ?: LetterItem.targetFromName(stack)
 
-    private fun destinationOf(route: MailRoute): BlockPos? {
+    /**
+     * Returns the whole mailbox, not just its position, because the mailman's
+     * name tag needs the name too and this is the only place the two are
+     * resolved together - looking the name up separately would repeat the
+     * lookup on every tick of every route.
+     */
+    private fun destinationOf(route: MailRoute): MailboxRef? {
         val wanted = if (route.state == RouteState.RETURNING) route.originId else route.targetId
-        return mailboxFor(wanted, route.level)?.pos
+        return mailboxFor(wanted, route.level)
     }
 
     /**
@@ -271,12 +279,18 @@ class MailRouteService : SavedData() {
     }
 
     /** @return true when an entity is now (or still) driving this route. */
-    private fun materialise(level: ServerLevel, route: MailRoute, destination: BlockPos): Boolean {
+    private fun materialise(level: ServerLevel, route: MailRoute, mailbox: MailboxRef): Boolean {
+        val destination = mailbox.pos
         val existing = route.entity?.let { level.getEntity(it) as? MailmanEntity }
         if (existing != null && existing.isAlive) {
             route.pos = existing.position()
             route.yTrustworthy = true
             existing.destination = destination
+            // Re-stamped every tick rather than only at spawn, which is what
+            // makes beginReturn's flip to RETURNING show up above the head
+            // without a separate hook: the state changes, and the next tick
+            // through here relabels whatever is already walking.
+            label(existing, route, mailbox)
             // Throttled, not skipped: a continuously-materialised route
             // never takes the dead-reckoning setDirty() path, so without
             // this its position and stall bookkeeping would only ever be
@@ -311,11 +325,37 @@ class MailRouteService : SavedData() {
         // instance shared by two owners that both serialise it independently.
         mob.carried = route.stack.copy()
         mob.destination = destination
+        label(mob, route, mailbox)
         level.addFreshEntity(mob)
         route.entity = mob.uuid
         route.yTrustworthy = true
         setDirty()
         return true
+    }
+
+    /**
+     * Names the mailman after where it is going, so a player can see which
+     * delivery they are looking at.
+     *
+     * The name is deliberately left NOT visible: MobRenderer.shouldShowName
+     * renders a custom name either when the visible flag is set - always, and
+     * through terrain - or, with the flag clear, only while the entity is
+     * under the crosshair. The second is what we want; with up to
+     * maxMaterialisedMailmen out at once, always-on tags would be noise.
+     *
+     * Assigned only when it actually differs. This runs every tick for every
+     * materialised route, and CustomName is synched entity data - rewriting an
+     * unchanged Component would still be a wasted comparison per mailman, and
+     * relies on Component equality to avoid a packet.
+     */
+    private fun label(mob: MailmanEntity, route: MailRoute, mailbox: MailboxRef) {
+        val wanted = MailmanLabel.text(
+            mailbox = mailbox.name,
+            pos = mailbox.pos,
+            returning = route.state == RouteState.RETURNING,
+        )
+        if (mob.customName?.string == wanted) return
+        mob.customName = Component.literal(wanted)
     }
 
     private fun dematerialise(level: ServerLevel, route: MailRoute) {

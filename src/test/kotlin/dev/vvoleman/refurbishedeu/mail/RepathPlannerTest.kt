@@ -1,6 +1,7 @@
 package dev.vvoleman.refurbishedeu.mail
 
 import net.minecraft.core.BlockPos
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -13,7 +14,7 @@ class RepathPlannerTest {
     /** Path once, successfully, so the planner is in its steady walking state. */
     private fun walking(): RepathPlanner = RepathPlanner().apply {
         shouldPath(target, navigationIdle = true)
-        onPathed(target, succeeded = true)
+        onPathed(target, succeeded = true, searched = true)
     }
 
     @Test
@@ -54,10 +55,10 @@ class RepathPlannerTest {
      * full interval waiting on a cooldown it never earned.
      */
     @Test
-    fun `retries on the very next tick after a failed attempt`() {
+    fun `retries on the very next tick when no search actually ran`() {
         val planner = RepathPlanner()
         planner.shouldPath(target, navigationIdle = true)
-        planner.onPathed(target, succeeded = false)
+        planner.onPathed(target, succeeded = false, searched = false)
         assertTrue(planner.shouldPath(target, navigationIdle = true))
     }
 
@@ -76,5 +77,67 @@ class RepathPlannerTest {
         val planner = walking()
         planner.reset()
         assertTrue(planner.shouldPath(target, navigationIdle = false))
+    }
+
+    /**
+     * Counts the calls that are refused before one is allowed, with the
+     * navigator idle and the destination unchanged - i.e. how long the backoff
+     * actually holds the caller off.
+     */
+    private fun refusalsBeforeRetry(planner: RepathPlanner): Int {
+        var refused = 0
+        while (!planner.shouldPath(target, navigationIdle = true)) refused++
+        return refused
+    }
+
+    /** Fails one grounded search, having first consumed the free opening path. */
+    private fun failedGroundedSearch(): RepathPlanner = RepathPlanner().apply {
+        shouldPath(target, navigationIdle = true)
+        onPathed(target, succeeded = false, searched = true)
+    }
+
+    /**
+     * The reason the search budget can be raised at all. A grounded mailman
+     * that A* could not path for - stuck in a ravine, say - used to be asked
+     * again on the very NEXT tick, burning a whole exhausted search per tick
+     * for as long as it stayed stuck. Multiplying the node budget would have
+     * multiplied that too.
+     */
+    @Test
+    fun `backs off after a grounded search fails`() {
+        assertFalse(failedGroundedSearch().shouldPath(target, navigationIdle = true))
+    }
+
+    @Test
+    fun `lengthens the backoff while grounded searches keep failing`() {
+        val planner = failedGroundedSearch()
+        val first = refusalsBeforeRetry(planner)
+        planner.onPathed(target, succeeded = false, searched = true)
+        assertTrue(refusalsBeforeRetry(planner) > first)
+    }
+
+    @Test
+    fun `caps the backoff`() {
+        val planner = failedGroundedSearch()
+        repeat(20) { planner.onPathed(target, succeeded = false, searched = true) }
+        assertTrue(refusalsBeforeRetry(planner) < RepathPlanner.MAX_BACKOFF)
+    }
+
+    /**
+     * A backoff is about one unreachable destination, not about the mailman.
+     * beginReturn flips the target mid-walk, and that deserves a fresh search
+     * immediately rather than serving out a wait earned by somewhere else.
+     */
+    @Test
+    fun `a changed destination overrides a backoff`() {
+        assertTrue(failedGroundedSearch().shouldPath(elsewhere, navigationIdle = true))
+    }
+
+    @Test
+    fun `a path that succeeds clears the backoff`() {
+        val planner = failedGroundedSearch()
+        repeat(5) { planner.onPathed(target, succeeded = false, searched = true) }
+        planner.onPathed(target, succeeded = true, searched = true)
+        assertEquals(RepathPlanner.REPATH_FLOOR - 1, refusalsBeforeRetry(planner))
     }
 }

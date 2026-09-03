@@ -50,16 +50,21 @@ class TravelToTargetGoal(
     override fun tick() {
         val destination = target ?: return
         if (!planner.shouldPath(destination, mob.navigation.isDone)) return
-        // moveTo reports false when it could not produce a path at all, which
-        // for a grounded navigator mostly means "was in the air this tick".
-        // The planner turns that into an immediate retry.
+        // GroundPathNavigation.canUpdatePath() - createPath returns null
+        // without searching at all when this is false, so a failure here cost
+        // nothing and is worth retrying at once. Read BEFORE moveTo, because
+        // moveTo can leave the mob in a different state than it found it.
+        val searched = mob.isOnGround || mob.isInWater || mob.isPassenger
+        // moveTo reports false when it could not produce a path at all: either
+        // the free airborne case above, or a real search that spent the whole
+        // node budget and found nothing. The planner needs to tell them apart.
         val pathed = mob.navigation.moveTo(
             destination.x + 0.5,
             destination.y.toDouble(),
             destination.z + 0.5,
             1.0,
         )
-        planner.onPathed(destination, pathed)
+        planner.onPathed(destination, pathed, searched)
     }
 
     companion object {
@@ -202,13 +207,16 @@ class UseBoatGoal(
             return
         }
         if (!planner.shouldPath(plan.embark, mob.navigation.isDone)) return
+        // See TravelToTargetGoal.tick: only a grounded failure actually spent a
+        // search, and only that one is worth backing off from.
+        val searched = mob.isOnGround || mob.isInWater || mob.isPassenger
         val pathed = mob.navigation.moveTo(
             plan.embark.x + 0.5,
             plan.embark.y.toDouble(),
             plan.embark.z + 0.5,
             1.0,
         )
-        planner.onPathed(plan.embark, pathed)
+        planner.onPathed(plan.embark, pathed, searched)
     }
 
     private fun board(plan: Crossing) {

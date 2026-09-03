@@ -23,6 +23,9 @@ class RepathPlanner {
     private var cooldown = 0
     private var pathedTo: BlockPos? = null
 
+    /** Ticks the NEXT failed grounded search will wait. Doubles per failure. */
+    private var backoff = REPATH_FLOOR
+
     /**
      * @param navigationIdle whether the navigator has no path left to walk.
      * @return true when the caller should ask for a new path this tick.
@@ -38,23 +41,46 @@ class RepathPlanner {
         return cooldown <= 0
     }
 
-    /** Report back what the navigator did with the request. */
-    fun onPathed(target: BlockPos, succeeded: Boolean) {
+    /**
+     * Report back what the navigator did with the request.
+     *
+     * @param searched whether A* actually ran. The two ways to come back
+     *  without a path cost wildly different amounts and must not be treated
+     *  alike: mid-jump, canUpdatePath() is false and createPath returns null
+     *  having searched NOTHING, so retrying next tick is free. Grounded, the
+     *  navigator really does spend its whole node budget and really does fail,
+     *  and asking again next tick spends it again, every tick, for as long as
+     *  the mailman stays stuck. Callers derive this from the same expression
+     *  GroundPathNavigation.canUpdatePath() uses.
+     */
+    fun onPathed(target: BlockPos, succeeded: Boolean, searched: Boolean) {
         if (succeeded) {
             pathedTo = target
             cooldown = REPATH_FLOOR
-        } else {
-            // Airborne, most likely: nothing was lost, but nothing was gained
-            // either. Clearing pathedTo asks again on the very next tick rather
-            // than serving out a cooldown that bought no path.
+            backoff = REPATH_FLOOR
+            return
+        }
+        if (!searched) {
+            // Nothing was lost, but nothing was gained either. Clearing
+            // pathedTo asks again on the very next tick rather than serving
+            // out a cooldown that bought no path.
             pathedTo = null
             cooldown = 0
+            return
         }
+        // A real search failed. pathedTo is deliberately KEPT here: shouldPath
+        // treats a changed destination as outranking the cooldown, so clearing
+        // it - as the airborne branch does - would let the very next tick
+        // straight through and make the backoff unreachable.
+        pathedTo = target
+        cooldown = backoff
+        backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF)
     }
 
     fun reset() {
         cooldown = 0
         pathedTo = null
+        backoff = REPATH_FLOOR
     }
 
     companion object {
@@ -68,5 +94,15 @@ class RepathPlanner {
          * tick recalculation, which is this same rate against a moving target.
          */
         const val REPATH_FLOOR = 4
+
+        /**
+         * Longest a repeatedly-failing search is made to wait.
+         *
+         * Five seconds: long enough that a mailman wedged somewhere A* cannot
+         * solve costs a fraction of one search per tick instead of a whole one,
+         * and short enough that it resumes promptly once a player opens the way
+         * out or the chunk it needed finishes loading.
+         */
+        const val MAX_BACKOFF = 100
     }
 }

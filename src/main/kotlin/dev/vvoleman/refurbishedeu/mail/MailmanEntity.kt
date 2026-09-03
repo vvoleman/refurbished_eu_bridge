@@ -28,6 +28,23 @@ class MailmanEntity(type: EntityType<out PathfinderMob>, level: Level) : Pathfin
     /** Set by MailRouteService when the mailman is materialised. */
     var destination: BlockPos? = null
 
+    init {
+        // PathNavigation's constructor sizes the node budget at
+        // floor(FOLLOW_RANGE * 16) = 768 here, and A* explores in order of
+        // g + h. Walking OUT of a ravine means first walking AWAY from the
+        // mailbox, which raises h and sorts those nodes to the back of the
+        // queue - so the budget is spent on the dead ends near the floor and
+        // the search ends before it ever reaches the node the exit starts
+        // from. That is the "there is a way out but it cannot see it" case.
+        //
+        // This costs nothing on a path that succeeds: PathFinder's budget is a
+        // loop bound, and the loop breaks the moment a target is reached. It is
+        // only spent where the search is currently failing - which is exactly
+        // where we want more of it. RepathPlanner's backoff is what keeps a
+        // failing search from being re-run every tick at this larger size.
+        navigation.setMaxVisitedNodesMultiplier(PATH_SEARCH_MULTIPLIER)
+    }
+
     override fun registerGoals() {
         goalSelector.addGoal(0, FloatGoal(this))
         goalSelector.addGoal(1, DeliverMailGoal(this) { it.destination })
@@ -102,6 +119,15 @@ class MailmanEntity(type: EntityType<out PathfinderMob>, level: Level) : Pathfin
     }
 
     companion object {
+        /**
+         * Multiplies the pathfinding node budget, taking it from A* giving up
+         * after 768 visited nodes to 3072. Sized to see round a ravine wall
+         * without letting one search dominate a tick: a vanilla zombie's whole
+         * budget is 560, so a mailman mid-search is worth about five of them,
+         * and only while it is failing to find a way out.
+         */
+        const val PATH_SEARCH_MULTIPLIER = 4.0f
+
         fun attributes(): AttributeSupplier.Builder = PathfinderMob.createMobAttributes()
             .add(Attributes.MAX_HEALTH, 20.0)
             .add(Attributes.MOVEMENT_SPEED, 0.5)

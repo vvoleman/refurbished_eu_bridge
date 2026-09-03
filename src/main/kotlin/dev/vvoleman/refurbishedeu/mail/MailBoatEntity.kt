@@ -1,5 +1,6 @@
 package dev.vvoleman.refurbishedeu.mail
 
+import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.vehicle.Boat
 import net.minecraft.world.level.Level
@@ -26,6 +27,13 @@ class MailBoatEntity(type: EntityType<out Boat>, level: Level) : Boat(type, leve
      * do not collect livestock on the way across.
      */
     override fun getMaxPassengers(): Int = 1
+
+    /**
+     * Drops nothing. The boat belongs to the delivery, not to the world, so
+     * there is no oak boat in it to hand out - vanilla Boat.destroy would give
+     * a player one free boat per mailman, and one hit in creative at that.
+     */
+    override fun destroy(source: DamageSource) = Unit
 
     /**
      * Belt-and-braces cleanup, mirroring MailmanEntity.tick() from the other

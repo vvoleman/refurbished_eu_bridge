@@ -33,8 +33,12 @@ class TravelToTargetGoal(
     }
 
     override fun canUse(): Boolean {
-        target = targetOf(mob)
-        return target != null && !mob.blockPosition().closerThan(target, ARRIVAL_RANGE)
+        // Held in a local as well as the field: the field is a var, so the
+        // compiler cannot smart-cast the null check away on a platform-typed
+        // Vec3i parameter.
+        val destination = targetOf(mob)
+        target = destination
+        return destination != null && !mob.blockPosition().closerThan(destination, ARRIVAL_RANGE)
     }
 
     override fun canContinueToUse(): Boolean = canUse()
@@ -100,6 +104,16 @@ class UseBoatGoal(
 ) : Goal() {
 
     private var crossing: Crossing? = null
+
+    /**
+     * The destination the crossing was planned toward. A crossing is only ever
+     * worth making toward one place, so a changed target invalidates it - the
+     * same rule [RepathPlanner] applies to a path being walked. Without this a
+     * route flipped to RETURNING mid-crossing keeps steering to the far bank it
+     * no longer wants, then walks the whole way back.
+     */
+    private var plannedFor: BlockPos? = null
+
     private var boat: MailBoatEntity? = null
     private var elapsed = 0
     private var scanCooldown = 0
@@ -109,6 +123,15 @@ class UseBoatGoal(
     init {
         flags = EnumSet.of(Flag.MOVE)
     }
+
+    /**
+     * Mob.serverAiStep() only ticks goals that ask for it on every other tick;
+     * the rest get half the ticks they think they get. A goal steering a
+     * vehicle needs all of them - otherwise DirectBoatPilot's per-tick turn
+     * clamp is really half a clamp, and the crossing timeout counts in units
+     * twice the size of the configured ones.
+     */
+    override fun requiresUpdateEveryTick(): Boolean = true
 
     override fun canUse(): Boolean {
         if (!MailmanConfig.useBoats()) return false
@@ -127,6 +150,7 @@ class UseBoatGoal(
             maxScan = MAX_SCAN,
             isWater = ::isSurfaceWater,
         )
+        plannedFor = target
         return crossing != null
     }
 
@@ -141,6 +165,10 @@ class UseBoatGoal(
         // a mailbox on the far bank could be delivered to from a boat, leaving
         // the boat behind.
         val target = targetOf(mob)
+        // The crossing was planned toward somewhere else, so it is answering a
+        // question nobody is asking any more. Standing down re-scans from
+        // wherever the mailman now is, toward wherever it now wants to go.
+        if (target != plannedFor) return false
         if (target != null && mob.blockPosition().closerThan(target, TravelToTargetGoal.ARRIVAL_RANGE)) {
             return false
         }
@@ -156,6 +184,7 @@ class UseBoatGoal(
     override fun stop() {
         release()
         crossing = null
+        plannedFor = null
         elapsed = 0
     }
 
@@ -199,7 +228,15 @@ class UseBoatGoal(
             mob.yRot,
             0.0f,
         )
-        level.addFreshEntity(spawned)
+        // startRiding does not require the vehicle to be in the level, so an
+        // unchecked rejection here (a cancelled EntityJoinLevelEvent, say)
+        // leaves the mailman riding an entity that will never tick: it cannot
+        // move itself while a passenger, and canContinueToUse stays true, so it
+        // would stand frozen for the whole crossing timeout.
+        if (!level.addFreshEntity(spawned)) {
+            spawned.discard()
+            return
+        }
         if (!mob.startRiding(spawned)) {
             // Nothing will own this boat if the mailman could not get in.
             spawned.discard()
@@ -247,13 +284,26 @@ class UseBoatGoal(
     private fun release() {
         val riding = boat ?: return
         mob.stopRiding()
-        riding.discard()
+        // A player may already have broken it. Entity.setRemoved is re-entrant
+        // but re-runs the level callback, which logs "wasn't found in section"
+        // for a boat that is already gone.
+        if (!riding.isRemoved) riding.discard()
         boat = null
     }
 
-    /** Open water: a water column with air above it, so a boat would float there. */
+    /**
+     * Open water: a water column with air above it, so a boat would float there.
+     *
+     * A missing chunk counts as not water rather than loading it. getFluidState
+     * would otherwise route through getChunk(load = true) and synchronously
+     * generate terrain up to MAX_SCAN blocks out for every idle mailman - the
+     * exact cost MailRouteService avoids with getChunkNow, on the principle
+     * that a delivery must not drag chunks along behind it. Water the server
+     * has not loaded is water nobody can see the mailman cross anyway.
+     */
     private fun isSurfaceWater(pos: BlockPos): Boolean {
         val level = mob.level
+        if (level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) == null) return false
         return level.getFluidState(pos).`is`(FluidTags.WATER) && level.getBlockState(pos.above()).isAir
     }
 

@@ -207,9 +207,10 @@ bugs.
    dimension addressing is refused at write time with a message pointing at the
    Post Box, which still does instant cross-dimension delivery. Refurbished's
    own `isDeliverableDimension` allow-list is honoured on top of that.
-2. **No open water in Phase 1.** A route that cannot walk to its target stalls,
-   returns the mail to its origin and tells the sender. Phase 2 turns a water
-   stall into a boat leg.
+2. **Open water is crossed by boat.** Implemented in Phase 2; see
+   `2026-09-03-mailman-boat-design.md`. A crossing that cannot be staged or
+   completed still falls back to the Phase 1 behaviour: the route stalls,
+   returns the mail to its origin and tells the sender.
 3. **Delivery is slow by design.** At the default 4 blocks/second a 5,000-block
    delivery takes about 20 minutes. `blocksPerSecond` is configurable.
 4. **Ambiguous mailbox names resolve to the nearest.** Refurbished permits

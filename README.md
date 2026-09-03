@@ -123,6 +123,22 @@ UUID, through its own UI — that path is unchanged and unaffected by any of
 this. Mail and Post Box packages are two independent systems that happen to
 share the mailbox block; this one is the deliberately slow one.
 
+### Crossing water
+
+A mailman that meets open water at least `minWaterCrossingWidth` blocks across
+walks to the shore, launches a boat, steers across and carries on from the far
+bank. The boat belongs to the delivery: it appears when the crossing starts and
+is gone when it ends, and it holds one passenger so it cannot pick up livestock
+on the way.
+
+Narrower water is waded rather than boated. If a crossing takes longer than
+`boatCrossingTimeoutTicks` the boat is abandoned and the mailman swims, which is
+what it did before boats existed. Set `useBoats = false` to restore that
+everywhere.
+
+Steering is straight-line, so winding rivers and islands mid-channel are not
+solved — the boat times out and the mailman swims.
+
 ### Behavioural limits
 
 - **Same dimension only.** A route can't cross dimensions; Refurbished's
@@ -131,9 +147,10 @@ share the mailbox block; this one is the deliberately slow one.
   mailbox sitting in a dimension Refurbished itself considers undeliverable
   never has its mail picked up at all.
 - **A route that can't reach its target stalls, then returns to sender.** If a
-  delivery makes no progress for long enough (open water, an unreachable
-  mailbox, whatever the obstruction), it gives up and carries the mail back to
-  the mailbox it was posted from. It is **not** automatically retried — the
+  delivery makes no progress for long enough (an unreachable mailbox, water too
+  wide or too tangled to boat across, whatever the obstruction), it gives up
+  and carries the mail back to the mailbox it was posted from. It is **not**
+  automatically retried — the
   returned stack keeps its old address and is ignored by future sweeps until
   you re-address it, which an anvil rename is the *only* way to do (editing a
   Parcel's contents does not touch its address). If the return trip *also*
@@ -167,6 +184,9 @@ transformer's — `<world>/serverconfig/refurbished_eu-mailman-server.toml`:
     indexRefreshTicks = 600      # how often the mailbox index is rebuilt
     pickupScanTicks = 200        # how often mailboxes are swept for outgoing mail
     stallTimeoutTicks = 1200     # ticks without progress before a route gives up
+    useBoats = true              # cross open water by boat
+    minWaterCrossingWidth = 6    # water narrower than this is waded, not boated
+    boatCrossingTimeoutTicks = 600  # abandon a crossing taking longer than this
 ```
 
 `blocksPerSecond` only governs dead reckoning — a materialised mailman walks

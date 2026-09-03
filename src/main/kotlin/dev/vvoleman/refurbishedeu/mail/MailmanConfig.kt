@@ -17,6 +17,7 @@ object MailmanConfig {
     val indexRefreshTicks: ForgeConfigSpec.IntValue
     val pickupScanTicks: ForgeConfigSpec.IntValue
     val stallTimeoutTicks: ForgeConfigSpec.IntValue
+    val stuckHopBlocks: ForgeConfigSpec.IntValue
     val useBoats: ForgeConfigSpec.BooleanValue
     val minWaterCrossingWidth: ForgeConfigSpec.IntValue
     val boatCrossingTimeoutTicks: ForgeConfigSpec.IntValue
@@ -61,6 +62,19 @@ object MailmanConfig {
             )
             .defineInRange("stallTimeoutTicks", 1200, 100, 72000)
 
+        stuckHopBlocks = builder
+            .comment(
+                "How far to nudge a stuck mailman along the straight line to its",
+                "mailbox once it has made no progress for half of stallTimeoutTicks.",
+                "Terrain a mailman cannot path out of - the floor of a ravine, most",
+                "often - would otherwise burn the whole stall budget going nowhere.",
+                "The nudge is silent, only ever lands somewhere it could have walked",
+                "to, and does NOT reset the stall clock, so a route still gives up on",
+                "schedule instead of hopping all the way to its destination.",
+                "0 disables it."
+            )
+            .defineInRange("stuckHopBlocks", 20, 0, 64)
+
         useBoats = builder
             .comment(
                 "Let a mailman cross open water by boat.",
@@ -97,6 +111,7 @@ object MailmanConfig {
     fun indexRefreshTicks(): Int = read(indexRefreshTicks, 600)
     fun pickupScanTicks(): Int = read(pickupScanTicks, 200)
     fun stallTimeoutTicks(): Int = read(stallTimeoutTicks, 1200)
+    fun stuckHopBlocks(): Int = read(stuckHopBlocks, 20)
     fun useBoats(): Boolean = read(useBoats, true)
     fun minWaterCrossingWidth(): Int = read(minWaterCrossingWidth, 6)
     fun boatCrossingTimeoutTicks(): Int = read(boatCrossingTimeoutTicks, 600)

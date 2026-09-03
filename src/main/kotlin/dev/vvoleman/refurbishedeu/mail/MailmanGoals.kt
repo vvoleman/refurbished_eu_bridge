@@ -49,6 +49,10 @@ class TravelToTargetGoal(
 
     override fun tick() {
         val destination = target ?: return
+        // Before shouldPath, so a mailman the stuck-hop just moved gets a fresh
+        // search this tick instead of serving out a backoff earned where it no
+        // longer is.
+        planner.notePosition(mob.position())
         if (!planner.shouldPath(destination, mob.navigation.isDone)) return
         // GroundPathNavigation.canUpdatePath() - createPath returns null
         // without searching at all when this is false, so a failure here cost

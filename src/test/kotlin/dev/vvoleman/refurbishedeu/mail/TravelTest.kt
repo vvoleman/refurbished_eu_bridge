@@ -66,4 +66,36 @@ class TravelTest {
             )
         }
     }
+
+    /**
+     * The stuck-hop uses this rather than advance(): a hop is a fixed DISTANCE,
+     * not a speed multiplied by a duration, and expressing it as the latter
+     * would tie how far a stuck mailman escapes to blocksPerSecond, which is a
+     * dead-reckoning setting and nothing to do with it.
+     */
+    @Test
+    fun `hop steps the requested distance along the line`() {
+        val moved = Travel.hop(Vec3(0.0, 64.0, 0.0), Vec3(100.0, 64.0, 0.0), 20.0)
+        assertEquals(20.0, moved.x, 1e-9)
+        assertEquals(0.0, moved.z, 1e-9)
+    }
+
+    @Test
+    fun `hop stops at the destination rather than overshooting it`() {
+        val moved = Travel.hop(Vec3(0.0, 64.0, 0.0), Vec3(5.0, 64.0, 0.0), 20.0)
+        assertEquals(5.0, moved.x, 1e-9)
+    }
+
+    /** Horizontal only, exactly like advance - the caller picks the landing y. */
+    @Test
+    fun `hop keeps the y it started with`() {
+        val moved = Travel.hop(Vec3(0.0, 64.0, 0.0), Vec3(100.0, 11.0, 0.0), 20.0)
+        assertEquals(64.0, moved.y, 1e-9)
+    }
+
+    @Test
+    fun `hop returns the start when already at the destination`() {
+        val from = Vec3(3.0, 64.0, 3.0)
+        assertEquals(from, Travel.hop(from, from, 20.0))
+    }
 }

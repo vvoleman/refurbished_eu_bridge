@@ -1,6 +1,7 @@
 package dev.vvoleman.refurbishedeu.mail
 
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.network.chat.Component
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
@@ -432,6 +433,11 @@ class MailRouteService : SavedData() {
             return false
         }
         route.stalledTicks++
+        // Deliberately BEFORE the timeout check and deliberately without
+        // resetting stalledTicks: a hop buys distance, not time. Resetting the
+        // clock would let a mailman that cannot path anywhere hop to its
+        // mailbox one nudge at a time and never be judged undeliverable.
+        if (driving) hopIfStuck(level, route, destVec)
         // A materialised mailman legitimately moves away from its
         // destination sometimes - routing around a lake, backing out of a
         // dead end - in a way straight-line dead reckoning never does, so it
@@ -446,6 +452,61 @@ class MailRouteService : SavedData() {
         }
         beginReturn(route)
         return false
+    }
+
+    /**
+     * Nudges a mailman that has stopped getting anywhere a short way along the
+     * straight line to its mailbox.
+     *
+     * Raising the A* node budget makes the search see further round a ravine
+     * wall, but some terrain has no walkable way out at all, and there the
+     * mailman would spend the entire stall budget failing. This is the escape
+     * hatch, and it is the same trick the system already relies on: a route
+     * that nobody is watching advances by straight-line arithmetic, because
+     * route.pos - not the entity - is the durable thing. This just applies one
+     * step of that while somebody IS watching, and moves the entity to match.
+     *
+     * Silent and rare by design. It only fires once no progress has been made
+     * for half the stall timeout, and then only every half-timeout after that.
+     */
+    private fun hopIfStuck(level: ServerLevel, route: MailRoute, destVec: Vec3) {
+        val blocks = MailmanConfig.stuckHopBlocks()
+        if (blocks <= 0) return
+        val interval = MailmanConfig.stallTimeoutTicks() / HOP_STALL_DIVISOR
+        if (interval <= 0 || route.stalledTicks % interval != 0) return
+        val mob = route.entity?.let { level.getEntity(it) as? MailmanEntity } ?: return
+        // A passenger cannot be repositioned out from under its vehicle without
+        // leaving the boat behind; UseBoatGoal's own timeout covers a wedged
+        // crossing.
+        if (mob.isPassenger) return
+
+        val target = Travel.hop(route.pos, destVec, blocks.toDouble())
+        val preferred = BlockPos(Mth.floor(target.x), Mth.floor(route.pos.y), Mth.floor(target.z))
+        val landing = LandingSpot.find(preferred, HOP_LANDING_RADIUS) { isStandable(level, it) } ?: return
+
+        mob.moveTo(landing.x + 0.5, landing.y.toDouble(), landing.z + 0.5, mob.yRot, mob.xRot)
+        // The path it was walking described the old position; keeping it would
+        // steer the mailman back to where it just came from.
+        mob.navigation.stop()
+        route.pos = Vec3(landing.x + 0.5, landing.y.toDouble(), landing.z + 0.5)
+        route.yTrustworthy = true
+        setDirty()
+    }
+
+    /**
+     * Whether a mailman could stand with its feet in this block.
+     *
+     * A missing chunk counts as unstandable rather than loading it, on the same
+     * principle as isObservable and UseBoatGoal.isSurfaceWater: a delivery must
+     * not drag chunks along behind it. Requiring air at both the feet and the
+     * head also rules out water and lava, since neither is air.
+     */
+    private fun isStandable(level: ServerLevel, pos: BlockPos): Boolean {
+        if (level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) == null) return false
+        if (!level.getBlockState(pos).isAir) return false
+        if (!level.getBlockState(pos.above()).isAir) return false
+        val floor = pos.below()
+        return level.getBlockState(floor).isFaceSturdy(level, floor, Direction.UP)
     }
 
     /**
@@ -510,6 +571,20 @@ class MailRouteService : SavedData() {
         // blocksPerSecond to get right.
         private const val DRIVEN_PROGRESS_EPSILON = 0.05
         private const val MATERIALISED_STALL_MULTIPLIER = 4
+
+        /**
+         * A stuck mailman is nudged every stallTimeoutTicks / this. Two means
+         * the first nudge lands halfway to being declared undeliverable, which
+         * leaves the second half of the budget to walk the rest normally.
+         */
+        private const val HOP_STALL_DIVISOR = 2
+
+        /**
+         * How far above or below the straight line a nudge may look for ground.
+         * Wide enough to clear a ravine lip, narrow enough that it cannot drop
+         * the mailman down a shaft it was standing beside.
+         */
+        private const val HOP_LANDING_RADIUS = 8
         // How often a continuously-materialised route's position and stall
         // bookkeeping get flagged dirty, in ticks. These fields have no other
         // setDirty() call on their path (unlike dead reckoning, which calls

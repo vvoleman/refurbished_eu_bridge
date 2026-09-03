@@ -21,12 +21,24 @@ object Travel {
         return sqrt(dx * dx + dz * dz)
     }
 
-    fun advance(from: Vec3, to: Vec3, blocksPerSecond: Double, ticks: Int): Vec3 {
+    fun advance(from: Vec3, to: Vec3, blocksPerSecond: Double, ticks: Int): Vec3 =
+        hop(from, to, blocksPerSecond * (ticks / TICKS_PER_SECOND))
+
+    /**
+     * Moves [blocks] along the horizontal line to [to], stopping there rather
+     * than overshooting. Keeps [from]'s y, like [advance] - the caller decides
+     * what height the result belongs at, because arithmetic cannot know.
+     *
+     * Distance-based rather than speed-times-duration because the stuck-hop is
+     * a fixed distance. Expressing it as the latter would tie how far a stuck
+     * mailman escapes to blocksPerSecond, which governs dead reckoning and has
+     * nothing to do with getting out of a ravine.
+     */
+    fun hop(from: Vec3, to: Vec3, blocks: Double): Vec3 {
         val remaining = horizontalDistance(from, to)
         if (remaining <= 1e-9) return from
-        val step = blocksPerSecond * (ticks / TICKS_PER_SECOND)
-        if (step >= remaining) return Vec3(to.x, from.y, to.z)
-        val scale = step / remaining
+        if (blocks >= remaining) return Vec3(to.x, from.y, to.z)
+        val scale = blocks / remaining
         return Vec3(from.x + (to.x - from.x) * scale, from.y, from.z + (to.z - from.z) * scale)
     }
 

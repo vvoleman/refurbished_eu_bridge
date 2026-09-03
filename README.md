@@ -123,6 +123,27 @@ UUID, through its own UI — that path is unchanged and unaffected by any of
 this. Mail and Post Box packages are two independent systems that happen to
 share the mailbox block; this one is the deliberately slow one.
 
+### Getting unstuck
+
+Pathfinding searches a bounded number of positions, and escaping somewhere like
+a ravine floor means first walking *away* from the mailbox — which is the last
+thing the search tries. A mailman can therefore end up somewhere with a
+perfectly good way out that it never finds.
+
+Two things handle it. The search is given four times the usual budget, which
+costs nothing on paths that already work and buys a much wider look around an
+obstacle. And if a mailman still makes no progress for half of
+`stallTimeoutTicks`, it is nudged `stuckHopBlocks` along the straight line
+toward its mailbox, repeating every half-timeout until it either gets going or
+the route is declared undeliverable as before.
+
+The nudge is silent and only ever puts the mailman somewhere it could have
+walked to — standing on solid ground, in a loaded chunk, never inside terrain
+or water. If there's nowhere suitable it doesn't move at all. It also does
+*not* reset the stall clock, so a mailman that can't path anywhere still gives
+up on schedule rather than hopping the whole way to its destination. Set
+`stuckHopBlocks = 0` to turn it off.
+
 ### Seeing where one is going
 
 Look at a mailman and its destination appears above its head — `→ Bakery` while
@@ -196,6 +217,7 @@ transformer's — `<world>/serverconfig/refurbished_eu-mailman-server.toml`:
     indexRefreshTicks = 600      # how often the mailbox index is rebuilt
     pickupScanTicks = 200        # how often mailboxes are swept for outgoing mail
     stallTimeoutTicks = 1200     # ticks without progress before a route gives up
+    stuckHopBlocks = 20          # nudge a stuck mailman this far along; 0 disables
     useBoats = true              # cross open water by boat
     minWaterCrossingWidth = 6    # water narrower than this is waded, not boated
     boatCrossingTimeoutTicks = 600  # abandon a crossing taking longer than this

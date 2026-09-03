@@ -1,6 +1,7 @@
 package dev.vvoleman.refurbishedeu.mail
 
 import net.minecraft.core.BlockPos
+import net.minecraft.world.phys.Vec3
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -139,5 +140,36 @@ class RepathPlannerTest {
         repeat(5) { planner.onPathed(target, succeeded = false, searched = true) }
         planner.onPathed(target, succeeded = true, searched = true)
         assertEquals(RepathPlanner.REPATH_FLOOR - 1, refusalsBeforeRetry(planner))
+    }
+
+    /**
+     * The stuck-hop moves the mailman without the destination changing, so
+     * nothing else here would notice. Without this the mailman would arrive at
+     * its new spot and stand there serving out a backoff earned somewhere it
+     * no longer is - up to MAX_BACKOFF of doing nothing after a nudge whose
+     * entire point was to get it moving again.
+     */
+    @Test
+    fun `a jump in position clears the backoff`() {
+        val planner = failedGroundedSearch()
+        repeat(5) { planner.onPathed(target, succeeded = false, searched = true) }
+        planner.notePosition(Vec3(0.0, 64.0, 0.0))
+        planner.notePosition(Vec3(20.0, 64.0, 0.0))
+        assertTrue(planner.shouldPath(target, navigationIdle = true))
+    }
+
+    @Test
+    fun `ordinary walking does not clear the backoff`() {
+        val planner = failedGroundedSearch()
+        planner.notePosition(Vec3(0.0, 64.0, 0.0))
+        planner.notePosition(Vec3(0.25, 64.0, 0.0))
+        assertFalse(planner.shouldPath(target, navigationIdle = true))
+    }
+
+    @Test
+    fun `the first position noted is not a jump`() {
+        val planner = failedGroundedSearch()
+        planner.notePosition(Vec3(1000.0, 64.0, 1000.0))
+        assertFalse(planner.shouldPath(target, navigationIdle = true))
     }
 }

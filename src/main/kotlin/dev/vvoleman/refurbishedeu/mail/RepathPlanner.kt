@@ -1,6 +1,7 @@
 package dev.vvoleman.refurbishedeu.mail
 
 import net.minecraft.core.BlockPos
+import net.minecraft.world.phys.Vec3
 
 /**
  * Decides when the mailman may ask its navigator for a fresh path.
@@ -25,6 +26,9 @@ class RepathPlanner {
 
     /** Ticks the NEXT failed grounded search will wait. Doubles per failure. */
     private var backoff = REPATH_FLOOR
+
+    /** Where the mailman was when [notePosition] last saw it. */
+    private var lastPos: Vec3? = null
 
     /**
      * @param navigationIdle whether the navigator has no path left to walk.
@@ -77,10 +81,29 @@ class RepathPlanner {
         backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF)
     }
 
+    /**
+     * Tell the planner where the mailman is, so it can notice being moved.
+     *
+     * A backoff is earned by one place failing to yield a path, and the
+     * stuck-hop exists precisely to move the mailman somewhere else without
+     * changing its destination - which nothing else here would see. Left
+     * unnoticed, a nudged mailman would stand at its new spot serving out a
+     * wait earned at the old one, defeating the nudge.
+     */
+    fun notePosition(pos: Vec3) {
+        val previous = lastPos
+        lastPos = pos
+        if (previous == null) return
+        if (previous.distanceToSqr(pos) < TELEPORT_DISTANCE_SQR) return
+        reset()
+        lastPos = pos
+    }
+
     fun reset() {
         cooldown = 0
         pathedTo = null
         backoff = REPATH_FLOOR
+        lastPos = null
     }
 
     companion object {
@@ -104,5 +127,12 @@ class RepathPlanner {
          * out or the chunk it needed finishes loading.
          */
         const val MAX_BACKOFF = 100
+
+        /**
+         * Squared distance in one tick that means the mailman was moved rather
+         * than walked. Four blocks: a mailman walks about a quarter of a block
+         * per tick, so nothing it does under its own power comes near this.
+         */
+        const val TELEPORT_DISTANCE_SQR = 16.0
     }
 }

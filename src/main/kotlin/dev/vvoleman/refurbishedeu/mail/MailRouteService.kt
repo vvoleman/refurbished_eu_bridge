@@ -12,6 +12,7 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.level.saveddata.SavedData
 import net.minecraft.world.phys.Vec3
+import net.minecraft.world.item.ItemStack
 import com.mrcrayfish.furniture.refurbished.blockentity.MailboxBlockEntity
 import com.mrcrayfish.furniture.refurbished.mail.DeliveryService
 import dev.vvoleman.refurbishedeu.RefurbishedEuBridge
@@ -29,11 +30,8 @@ class MailRouteService : SavedData() {
     private var indexAge = Int.MAX_VALUE
 
     /**
-     * Reserved for Task 13's mailbox pickup sweep (a periodic scan of every
-     * mailbox for outgoing mail), which is meant to throttle itself off this
-     * the same way indexAge throttles refreshIndex. Nothing in this file
-     * reads it yet - that is expected, not a bug, so do not delete it for
-     * being "unused".
+     * Throttles [sweep] (the periodic scan of every mailbox for outgoing
+     * mail) the same way indexAge throttles refreshIndex.
      */
     private var tickCounter = 0
 
@@ -63,6 +61,12 @@ class MailRouteService : SavedData() {
     fun tick(server: MinecraftServer) {
         refreshIndex(server)
         tickCounter++
+        // Runs to completion (and may append to routes via add()) before the
+        // iterator below is even created, so it cannot invalidate that
+        // iterator or otherwise interfere with the delivery loop it drives.
+        // A route swept in this tick is simply ticked once already this same
+        // tick, which is harmless - it starts driving one tick sooner.
+        sweep(server)
         val iterator = routes.iterator()
         while (iterator.hasNext()) {
             val route = iterator.next()
@@ -135,6 +139,64 @@ class MailRouteService : SavedData() {
 
     private fun mailboxFor(id: UUID, level: ResourceKey<Level>): MailboxRef? =
         mailboxById[id]?.takeIf { it.level == level }
+
+    /**
+     * Turns addressed mail sitting in a mailbox into a route.
+     *
+     * The stack is removed from the mailbox as the route is created, so the mail
+     * is in exactly one place at every moment - never both in a container and in
+     * flight.
+     */
+    private fun sweep(server: MinecraftServer) {
+        if (tickCounter % MailmanConfig.pickupScanTicks() != 0) return
+        for (origin in cachedMailboxes) {
+            val level = server.getLevel(origin.level) ?: continue
+            // Only mailboxes in loaded chunks are swept; an unloaded one has
+            // nothing ticking to have put mail in it since the last sweep.
+            if (level.chunkSource.getChunkNow(origin.pos.x shr 4, origin.pos.z shr 4) == null) continue
+            val be = level.getBlockEntity(origin.pos) as? MailboxBlockEntity ?: continue
+            sweepOne(be, origin)
+        }
+    }
+
+    private fun sweepOne(be: MailboxBlockEntity, origin: MailboxRef) {
+        for (slot in 0 until be.containerSize) {
+            val stack = be.getItem(slot)
+            if (stack.isEmpty) continue
+            if (!isOurMail(stack)) continue
+            val target = addressOf(stack) ?: continue
+            if (target.equals(origin.name, ignoreCase = true)) continue
+
+            // Restrict to this dimension BEFORE resolving the name. byName picks the
+            // nearest match and compares raw block positions, so a same-named mailbox in
+            // another dimension could otherwise win on a meaningless coordinate distance
+            // and the mail would be dropped here - even though a valid local one exists.
+            val local = cachedMailboxes.filter { it.level == origin.level }
+            val destination = MailboxIndex.byName(local, target, origin.pos) ?: continue
+            if (destination.id == origin.id) continue
+
+            val route = MailRoute(
+                id = UUID.randomUUID(),
+                stack = stack.copy(),
+                originId = origin.id,
+                targetId = destination.id,
+                level = origin.level,
+                pos = Vec3(origin.pos.x + 0.5, origin.pos.y.toDouble(), origin.pos.z + 0.5),
+                state = RouteState.TRAVELLING,
+            )
+            if (add(route)) {
+                be.setItem(slot, ItemStack.EMPTY)
+                be.setChanged()
+            }
+            return
+        }
+    }
+
+    private fun isOurMail(stack: ItemStack): Boolean =
+        stack.item == RefurbishedEuBridge.LETTER.get() || stack.item == RefurbishedEuBridge.PARCEL.get()
+
+    private fun addressOf(stack: ItemStack): String? =
+        MailAddress.target(stack) ?: LetterItem.targetFromName(stack)
 
     private fun destinationOf(route: MailRoute): BlockPos? {
         val wanted = if (route.state == RouteState.RETURNING) route.originId else route.targetId

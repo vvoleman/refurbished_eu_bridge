@@ -1,12 +1,9 @@
 package dev.vvoleman.refurbishedeu
 
 import com.mrcrayfish.furniture.refurbished.client.renderer.blockentity.ElectricBlockEntityRenderer
-import dev.vvoleman.refurbishedeu.mail.MailmanEntity
+import dev.vvoleman.refurbishedeu.mail.MailmanRenderer
 import dev.vvoleman.refurbishedeu.mail.ParcelScreen
 import net.minecraft.client.gui.screens.MenuScreens
-import net.minecraft.client.model.HumanoidModel
-import net.minecraft.client.model.geom.ModelLayers
-import net.minecraft.client.renderer.entity.HumanoidMobRenderer
 import net.minecraftforge.client.event.EntityRenderersEvent
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
@@ -31,15 +28,9 @@ object ClientSetup {
             ElectricBlockEntityRenderer<TransformerBlockEntity>(context)
         }
         // MailmanEntity is not a Villager, so VillagerRenderer's fixed <Villager, VillagerModel<Villager>>
-        // generics refuse it. HumanoidMobRenderer is generic over the entity type, so it accepts
-        // MailmanEntity directly with the vanilla player model/layer as a stand-in.
-        event.registerEntityRenderer(RefurbishedEuBridge.MAILMAN.get()) { context ->
-            HumanoidMobRenderer<MailmanEntity, HumanoidModel<MailmanEntity>>(
-                context,
-                HumanoidModel(context.bakeLayer(ModelLayers.PLAYER)),
-                0.5f
-            )
-        }
+        // generics refuse it. MailmanRenderer is a HumanoidMobRenderer bound to MailmanEntity that
+        // swaps the inherited steve.png for the mod's own skin.
+        event.registerEntityRenderer(RefurbishedEuBridge.MAILMAN.get(), ::MailmanRenderer)
     }
 
     private fun onClientSetup(event: FMLClientSetupEvent) {

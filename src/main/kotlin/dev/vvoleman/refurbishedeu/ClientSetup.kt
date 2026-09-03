@@ -4,6 +4,7 @@ import com.mrcrayfish.furniture.refurbished.client.renderer.blockentity.Electric
 import dev.vvoleman.refurbishedeu.mail.MailmanRenderer
 import dev.vvoleman.refurbishedeu.mail.ParcelScreen
 import net.minecraft.client.gui.screens.MenuScreens
+import net.minecraft.client.renderer.entity.BoatRenderer
 import net.minecraftforge.client.event.EntityRenderersEvent
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
@@ -31,6 +32,13 @@ object ClientSetup {
         // generics refuse it. MailmanRenderer is a HumanoidMobRenderer bound to MailmanEntity that
         // swaps the inherited steve.png for the mod's own skin.
         event.registerEntityRenderer(RefurbishedEuBridge.MAILMAN.get(), ::MailmanRenderer)
+        // BoatRenderer is EntityRenderer<Boat>, but registerEntityRenderer takes
+        // EntityType<? extends T> against EntityRendererProvider<T>, so T infers
+        // as Boat and EntityType<MailBoatEntity> satisfies it. The fixed-generics
+        // wall that forced a custom renderer for the mailman does not apply.
+        event.registerEntityRenderer(RefurbishedEuBridge.MAIL_BOAT.get()) { context ->
+            BoatRenderer(context, false)
+        }
     }
 
     private fun onClientSetup(event: FMLClientSetupEvent) {

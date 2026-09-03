@@ -2,6 +2,7 @@ package dev.vvoleman.refurbishedeu
 
 import com.mojang.datafixers.types.Type
 import dev.vvoleman.refurbishedeu.mail.LetterItem
+import dev.vvoleman.refurbishedeu.mail.MailBoatEntity
 import dev.vvoleman.refurbishedeu.mail.MailRouteService
 import dev.vvoleman.refurbishedeu.mail.MailmanConfig
 import dev.vvoleman.refurbishedeu.mail.MailmanEntity
@@ -91,6 +92,14 @@ object RefurbishedEuBridge {
             .sized(0.6f, 1.95f)
             .clientTrackingRange(10)
             .build("mailman")
+    }
+
+    /** Dimensions and tracking range copied from vanilla EntityType.BOAT. */
+    val MAIL_BOAT: RegistryObject<EntityType<MailBoatEntity>> = ENTITIES.register("mail_boat") {
+        EntityType.Builder.of(::MailBoatEntity, MobCategory.MISC)
+            .sized(1.375f, 0.5625f)
+            .clientTrackingRange(10)
+            .build("mail_boat")
     }
 
     /** One block entity type shared by all three variants; the tier comes from the block. */

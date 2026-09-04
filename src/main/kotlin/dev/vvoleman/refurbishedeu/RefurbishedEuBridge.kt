@@ -8,6 +8,7 @@ import net.minecraft.world.inventory.MenuType
 import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.CreativeModeTab
 import net.minecraft.world.item.Item
+import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockBehaviour
@@ -36,6 +37,10 @@ object RefurbishedEuBridge {
     private val MENUS = DeferredRegister.create(ForgeRegistries.MENU_TYPES, ID)
     private val SOUNDS = DeferredRegister.create(ForgeRegistries.SOUND_EVENTS, ID)
 
+    val CREATIVE_TAB: CreativeModeTab = object : CreativeModeTab("refurbished_eu") {
+        override fun makeIcon(): ItemStack = ItemStack(TRANSFORMERS.getValue(TransformerTier.MEDIUM).get())
+    }
+
     val TRANSFORMERS: Map<TransformerTier, RegistryObject<Block>> =
         TransformerTier.values().associateWith { tier ->
             BLOCKS.register(tier.id) {
@@ -53,7 +58,7 @@ object RefurbishedEuBridge {
             ITEMS.register(tier.id) {
                 BlockItem(
                     TRANSFORMERS.getValue(tier).get(),
-                    Item.Properties().tab(CreativeModeTab.TAB_REDSTONE)
+                    Item.Properties().tab(CREATIVE_TAB)
                 )
             }
         }

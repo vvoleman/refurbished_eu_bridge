@@ -1,0 +1,8 @@
+{
+  "replace": false,
+  "values": [
+    "refurbished_eu:low_eu_transformer",
+    "refurbished_eu:medium_eu_transformer",
+    "refurbished_eu:high_eu_transformer"
+  ]
+}

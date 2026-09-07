@@ -517,8 +517,13 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     /**
      * Both of these are re-read by AudioWorldSound every tick, so unlike the sound
      * event itself they need no swap to take effect.
+     *
+     * Near-native, because the two loops already differ in character: the
+     * overload one carries its own tremolo and a lower fundamental. The old 0.5
+     * was there to drag a borrowed motor loop down into sounding strained, and
+     * applied to this sample it would push the fundamental below hearing.
      */
-    override fun getAudioPitch(): Float = if (faulted) 0.5f else 0.8f
+    override fun getAudioPitch(): Float = if (faulted) 0.85f else 1.0f
 
     override fun getAudioHash(): Int = worldPosition.hashCode()
 

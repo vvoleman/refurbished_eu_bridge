@@ -33,14 +33,18 @@ Each transformer has a GUI showing buffer, connected and active device counts,
 current draw and accepted voltage tier. You can give it a name, which appears
 everywhere the transformer is listed.
 
-Looking at a transformer also puts a label under the crosshair, styled after
+Looking at a transformer also puts a label under the crosshair, laid out like
 Refurbished's own "Missing power" indicator: a status bolt — green running, grey
 off, red overloaded — then the circuit name and its device load, `3/8`.
 
-An overloaded transformer announces itself without being looked at, too: the hum
-drops to a slow grinding motor and it smokes and sparks from the top face. Both
-stop the moment the network is back inside its limit, or the transformer is
-switched off.
+An overloaded transformer announces itself without being looked at, too: the
+buzz drops to a slower, pulsing strain and it smokes and sparks from the top
+face. Both stop the moment the network is back inside its limit, or the
+transformer is switched off.
+
+Every asset is the mod's own — see [Credits](#credits). Nothing is read out of
+another mod's jar at runtime, so a rename on their side can't leave a
+transformer silent or a label without an icon.
 
 ### Control
 
@@ -206,6 +210,25 @@ classpath, which leaves nothing to test against in dev.
 
 **Test by building the jar and installing it into the real pack**, where SRG
 names are correct.
+
+---
+
+## Credits
+
+The buzz both loops are built from is
+[Electric Transformer #2](https://bigsoundbank.com/electric-transformer-2-s0086.html)
+from BigSoundBank, released under **CC0**. Attribution isn't required; it is here
+because it is deserved.
+
+The recording is 99% infrasonic rumble — microphone handling, not transformer —
+so `assets/refurbished_eu/sounds/` holds a processed version of it, not the
+original: highpassed at 120 Hz to get to the buzz, mixed with a 100 Hz
+fundamental for the mains hum the rumble had swallowed, and crossfaded into a
+1.40 s seamless loop. The loop length is a whole number of 100 Hz cycles, which
+is what lets the fundamental cross the seam without a click. The overload loop is
+the same source with a 7 Hz tremolo and a lower, rougher fundamental.
+
+The status bolt, block textures and GUI panel are drawn for this mod.
 
 ---
 

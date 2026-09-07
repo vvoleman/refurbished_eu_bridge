@@ -514,14 +514,14 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     /**
      * A working transformer is background: audible standing next to it, gone a
      * few blocks away. Overload is the opposite, and the gap between the two is
-     * deliberately wide - about 14 dB - so a fault registers as an event rather
+     * deliberately wide - about 20 dB - so a fault registers as an event rather
      * than as the hum having changed key.
      *
      * The hum sample is also mastered lower than the overload one, so the two
      * multiply. Both were needed: at the levels these replaced a borrowed motor
      * loop at, the idle hum shouted.
      */
-    override fun getAudioVolume(): Float = if (faulted) 0.55f else 0.15f
+    override fun getAudioVolume(): Float = if (faulted) 0.55f else 0.08f
 
     /**
      * Both of these are re-read by AudioWorldSound every tick, so unlike the sound

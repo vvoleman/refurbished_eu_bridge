@@ -1,0 +1,37 @@
+{
+  "parent": "refurbished_eu:wired_in",
+  "display": {
+    "icon": {
+      "item": "refurbished_eu:high_eu_transformer"
+    },
+    "title": {
+      "translate": "advancements.refurbished_eu.stepping_up.title"
+    },
+    "description": {
+      "translate": "advancements.refurbished_eu.stepping_up.description"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "high": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "refurbished_eu:high_eu_transformer"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "high"
+    ]
+  ]
+}

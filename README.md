@@ -94,6 +94,35 @@ end
 
 CC: Tweaked is optional. Without it the peripheral is simply never registered.
 
+### Advancements
+
+The mod has its own advancement tab, in two lines off a root: a crafting and
+placing progression, and a network line that reacts to what the circuit is
+actually doing.
+
+| Advancement | Earned by |
+|---|---|
+| Refurbished EU Bridge | Having any transformer in your inventory |
+| Wired In | Placing one, any tier |
+| Label Maker | Naming a transformer |
+| Hands Off | Switching one to redstone control |
+| Stepping Up | Crafting a High EU Transformer |
+| Fully Wired | Eight devices working at once on one circuit |
+| Breaker Tripped | Overloading a transformer |
+| Substation | Thirty-two devices on one transformer |
+
+Only *Substation* announces itself in chat.
+
+The last three are properties of the block rather than of anything a player
+did, so they go to everyone within 32 blocks when the condition comes true.
+Overload in particular happens whether or not anybody is there — that is why it
+smokes and grinds — so if nobody was in range the transformer remembers it and
+hands it to the next player who opens its GUI. Otherwise the advancement would
+really mean "overload a transformer while standing next to it".
+
+Everything except those three runs on vanilla triggers, which means the JSON is
+data: `/reload` picks up edits to it without a new jar.
+
 ---
 
 ## Configuration

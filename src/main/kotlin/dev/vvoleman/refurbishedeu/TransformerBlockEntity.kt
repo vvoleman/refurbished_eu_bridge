@@ -15,7 +15,12 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.ListTag
+import net.minecraft.nbt.StringTag
+import net.minecraft.nbt.Tag
 import net.minecraft.network.chat.Component
+import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.MenuProvider
@@ -100,6 +105,25 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
      */
     private var syncedConnectedCount: Int = 0
     private var syncedOverloaded: Boolean = false
+
+    /**
+     * Advancements whose condition came true with nobody in range to be given
+     * them, held until the next player opens the GUI.
+     *
+     * Ids rather than one boolean field per advancement: a fourth needs no new
+     * NBT key, and the set is short enough that the saved list costs nothing.
+     */
+    private val pendingAdvancements = mutableSetOf<ResourceLocation>()
+
+    /**
+     * Edge tracking for the three network advancements. Their conditions are
+     * *states*, re-read on every load scan, so without this a settled network
+     * sitting at eight active devices would re-run its award - and re-arm its
+     * pending flag - several times a second.
+     */
+    private var overloadAwarded: Boolean = false
+    private var fullyWiredAwarded: Boolean = false
+    private var substationAwarded: Boolean = false
 
     /**
      * Synced to the open screen. Note vanilla sends these as shorts, so every
@@ -189,6 +213,7 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
         // Split in two so the many early returns inside tickServer() can't skip
         // the sync check.
         syncHudStateIfChanged()
+        checkAdvancements(level)
     }
 
     private fun tickServer(level: Level) {
@@ -328,12 +353,93 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
         activeCount = active
     }
 
+    // ---- Advancements -----------------------------------------------------------------
+
+    /**
+     * The three advancements that describe the state of the circuit rather than
+     * something a player did.
+     *
+     * Outside tickServer() on purpose, the same as the HUD sync: its many early
+     * returns would hide half of these transitions, and the overload flag in
+     * particular is set by Refurbished's earlyNodeTick() and cleared by ours.
+     */
+    private fun checkAdvancements(level: Level) {
+        if (!isNodeOverloaded) {
+            overloadAwarded = false
+        } else if (!overloadAwarded) {
+            overloadAwarded = true
+            grant(level, ModAdvancements.BREAKER_TRIPPED)
+        }
+
+        // Both load advancements describe a circuit that is actually running:
+        // eight appliances *working*, thirty-two devices *running*. The counts
+        // outlive that state - tickServer() keeps refreshing connectedCount
+        // while the transformer is switched off or overloaded - so without this
+        // guard a Low transformer buried under forty devices it cannot power
+        // would pass for a substation.
+        //
+        // Clearing both flags here is also what makes a circuit that goes down
+        // and comes back up a fresh chance to be seen, rather than one that
+        // only ever counted the first time it filled up.
+        if (!enabled || isNodeOverloaded || !isNodePowered) {
+            fullyWiredAwarded = false
+            substationAwarded = false
+            return
+        }
+
+        if (activeCount < ACTIVE_DEVICES_FULLY_WIRED) {
+            fullyWiredAwarded = false
+        } else if (!fullyWiredAwarded) {
+            fullyWiredAwarded = true
+            grant(level, ModAdvancements.FULLY_WIRED)
+        }
+
+        // No tier check: 32 is the High transformer's cap, so it is the only
+        // tier that reaches this without overloading first. Someone who raises
+        // another tier's cap in the config has earned it just the same.
+        if (connectedCount < CONNECTED_DEVICES_SUBSTATION) {
+            substationAwarded = false
+        } else if (!substationAwarded) {
+            substationAwarded = true
+            grant(level, ModAdvancements.SUBSTATION)
+        }
+    }
+
+    /** Award to whoever is watching, or remember it for whoever turns up next. */
+    private fun grant(level: Level, id: ResourceLocation) {
+        val serverLevel = level as? ServerLevel ?: return
+        if (ModAdvancements.awardNearby(serverLevel, worldPosition, id)) return
+        if (pendingAdvancements.add(id)) setChanged()
+    }
+
+    /**
+     * Hand over anything that happened here unwitnessed. Without this the
+     * overload advancement would really be "overload a transformer while
+     * standing next to it", which is not what its description says.
+     *
+     * The list is cleared by the first player to open the GUI rather than kept
+     * per player: it is an undelivered message, not a permanent record of the
+     * block. Anyone who wants the advancement can trip their own breaker.
+     */
+    private fun awardPendingAdvancements(player: ServerPlayer) {
+        if (pendingAdvancements.isEmpty()) return
+        for (id in pendingAdvancements) {
+            ModAdvancements.award(player, id)
+        }
+        pendingAdvancements.clear()
+        setChanged()
+    }
+
     // ---- Menu -------------------------------------------------------------------------
 
     override fun getDisplayName(): Component = blockState.block.name
 
-    override fun createMenu(id: Int, inventory: Inventory, player: Player): AbstractContainerMenu =
-        TransformerMenu(id, inventory, this, dataAccess, worldPosition)
+    override fun createMenu(id: Int, inventory: Inventory, player: Player): AbstractContainerMenu {
+        // Opening the GUI is the "notices it" moment for anything that happened
+        // here while the transformer was on its own.
+        if (player is ServerPlayer) awardPendingAdvancements(player)
+        return TransformerMenu(id, inventory, this, dataAccess, worldPosition)
+    }
 
     /**
      * Implementing INameable means Refurbished's own systems (its HomeControl
@@ -346,6 +452,11 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
         // ContainerData carries ints only, so the name reaches clients through the
         // block update packet instead.
         sendUpdate()
+        // Clearing the name is not naming it, and the CC peripheral passes no
+        // player - it renames on behalf of a program, not of whoever is nearby.
+        if (player != null && customName != null) {
+            ModAdvancements.award(player, ModAdvancements.LABEL_MAKER)
+        }
     }
 
     // ---- Control ------------------------------------------------------------------------
@@ -364,17 +475,25 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
 
     fun togglePower(): Boolean = setEnabled(!enabled)
 
-    fun cycleControlMode() {
-        setControlMode(controlMode.next())
+    fun cycleControlMode(player: ServerPlayer? = null) {
+        setControlMode(controlMode.next(), player)
     }
 
-    fun setControlMode(mode: ControlMode) {
+    /**
+     * @param player whoever pressed the button, when there is one. The GUI has a
+     *   player to credit; the CC peripheral and Home Control do not, and pass
+     *   null rather than pick a bystander.
+     */
+    fun setControlMode(mode: ControlMode, player: ServerPlayer? = null) {
         if (controlMode == mode) return
         controlMode = mode
         // Read the world immediately so the GUI doesn't show a stale state for the
         // tick between the switch and the next serverTick().
         if (mode == ControlMode.REDSTONE) refreshRedstone()
         afterEnabledChanged()
+        if (player != null && mode == ControlMode.REDSTONE) {
+            ModAdvancements.award(player, ModAdvancements.HANDS_OFF)
+        }
     }
 
     private fun refreshRedstone() {
@@ -597,6 +716,15 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
         connectedCount = tag.getInt(TAG_CONNECTED)
         syncedConnectedCount = connectedCount
         syncedOverloaded = isNodeOverloaded
+        pendingAdvancements.clear()
+        val pending = tag.getList(TAG_PENDING_ADVANCEMENTS, Tag.TAG_STRING.toInt())
+        for (i in 0 until pending.size) {
+            ModAdvancements.retroactiveByPath(pending.getString(i))
+                ?.let { pendingAdvancements.add(it) }
+        }
+        // A reloaded chunk is not a fresh overload: seed the edge flag from the
+        // state we just read, or every chunk load would re-offer the award.
+        overloadAwarded = isNodeOverloaded
         manualEnabled = !tag.contains("Enabled") || tag.getBoolean("Enabled")
         redstonePowered = tag.getBoolean("Redstone")
         controlMode = if (tag.contains("ControlMode")) {
@@ -608,6 +736,15 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
         super.saveAdditional(tag)
         tag.putInt("StoredEu", storedEu)
         writeSyncedState(tag)
+        // Server-side only: a client has no advancements to award, so this stays
+        // out of writeSyncedState() and off the update packet.
+        if (pendingAdvancements.isNotEmpty()) {
+            val list = ListTag()
+            for (id in pendingAdvancements) {
+                list.add(StringTag.valueOf(id.path))
+            }
+            tag.put(TAG_PENDING_ADVANCEMENTS, list)
+        }
     }
 
     /** ContainerData reaches an open screen only; everything else needs this. */
@@ -620,6 +757,13 @@ class TransformerBlockEntity(pos: BlockPos, state: BlockState) :
     companion object {
         const val TAG_CUSTOM_NAME = "CustomName"
         const val TAG_CONNECTED = "Connected"
+        const val TAG_PENDING_ADVANCEMENTS = "PendingAdvancements"
+
+        /** Active devices on one circuit for `fully_wired`. */
+        private const val ACTIVE_DEVICES_FULLY_WIRED = 8
+
+        /** Connected devices on one transformer for `substation`. */
+        private const val CONNECTED_DEVICES_SUBSTATION = 32
 
         /** Client ticks between fault particles, as a 1-in-N chance per tick. */
         private const val SMOKE_INTERVAL = 4

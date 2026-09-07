@@ -1,6 +1,7 @@
 package dev.vvoleman.refurbishedeu
 
 import net.minecraft.core.BlockPos
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
@@ -51,7 +52,9 @@ class TransformerMenu(
             true
         }
         BUTTON_CYCLE_MODE -> {
-            blockEntity?.cycleControlMode()
+            // The button is the one path with a player to credit for handing the
+            // switch to the world, which is what `hands_off` is for.
+            blockEntity?.cycleControlMode(player as? ServerPlayer)
             true
         }
         else -> false

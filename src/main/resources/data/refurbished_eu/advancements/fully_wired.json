@@ -1,0 +1,23 @@
+{
+  "parent": "refurbished_eu:root",
+  "display": {
+    "icon": {
+      "item": "minecraft:redstone_lamp"
+    },
+    "title": {
+      "translate": "advancements.refurbished_eu.fully_wired.title"
+    },
+    "description": {
+      "translate": "advancements.refurbished_eu.fully_wired.description"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "awarded": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

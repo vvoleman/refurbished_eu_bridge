@@ -1,0 +1,63 @@
+{
+  "display": {
+    "icon": {
+      "item": "refurbished_eu:low_eu_transformer"
+    },
+    "title": {
+      "translate": "advancements.refurbished_eu.root.title"
+    },
+    "description": {
+      "translate": "advancements.refurbished_eu.root.description"
+    },
+    "frame": "task",
+    "background": "minecraft:textures/block/iron_block.png",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "criteria": {
+    "low": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "refurbished_eu:low_eu_transformer"
+            ]
+          }
+        ]
+      }
+    },
+    "medium": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "refurbished_eu:medium_eu_transformer"
+            ]
+          }
+        ]
+      }
+    },
+    "high": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "refurbished_eu:high_eu_transformer"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "low",
+      "medium",
+      "high"
+    ]
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "parent": "refurbished_eu:label_maker",
+  "display": {
+    "icon": {
+      "item": "minecraft:lever"
+    },
+    "title": {
+      "translate": "advancements.refurbished_eu.hands_off.title"
+    },
+    "description": {
+      "translate": "advancements.refurbished_eu.hands_off.description"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "criteria": {
+    "awarded": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

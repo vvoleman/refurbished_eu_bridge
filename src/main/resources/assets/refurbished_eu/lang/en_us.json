@@ -23,5 +23,21 @@
   "gui.refurbished_eu.mode.tooltip": "Switch between manual and redstone control",
   "gui.refurbished_eu.locked_by_redstone": "Under redstone control",
   "gui.refurbished_eu.status.off_redstone": "No redstone signal",
-  "hud.refurbished_eu.devices": "%s/%s"
+  "hud.refurbished_eu.devices": "%s/%s",
+  "advancements.refurbished_eu.root.title": "Refurbished EU Bridge",
+  "advancements.refurbished_eu.root.description": "Bridge an EU grid into a house that was never wired for it.",
+  "advancements.refurbished_eu.wired_in.title": "Wired In",
+  "advancements.refurbished_eu.wired_in.description": "Place a transformer.",
+  "advancements.refurbished_eu.label_maker.title": "Label Maker",
+  "advancements.refurbished_eu.label_maker.description": "Name a transformer. Future you will thank present you.",
+  "advancements.refurbished_eu.hands_off.title": "Hands Off",
+  "advancements.refurbished_eu.hands_off.description": "Put a transformer under redstone control, where the world owns the switch.",
+  "advancements.refurbished_eu.stepping_up.title": "Stepping Up",
+  "advancements.refurbished_eu.stepping_up.description": "Craft a High EU Transformer.",
+  "advancements.refurbished_eu.fully_wired.title": "Fully Wired",
+  "advancements.refurbished_eu.fully_wired.description": "Have eight appliances working at once on a single circuit.",
+  "advancements.refurbished_eu.breaker_tripped.title": "Breaker Tripped",
+  "advancements.refurbished_eu.breaker_tripped.description": "Overload a transformer. It will let you know.",
+  "advancements.refurbished_eu.substation.title": "Substation",
+  "advancements.refurbished_eu.substation.description": "Run thirty-two devices off one High EU Transformer."
 }

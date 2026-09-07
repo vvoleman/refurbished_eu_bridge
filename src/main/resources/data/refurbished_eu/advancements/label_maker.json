@@ -1,0 +1,23 @@
+{
+  "parent": "refurbished_eu:wired_in",
+  "display": {
+    "icon": {
+      "item": "minecraft:name_tag"
+    },
+    "title": {
+      "translate": "advancements.refurbished_eu.label_maker.title"
+    },
+    "description": {
+      "translate": "advancements.refurbished_eu.label_maker.description"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "criteria": {
+    "awarded": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

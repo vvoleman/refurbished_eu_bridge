@@ -78,17 +78,18 @@ object RefurbishedEuBridge {
         }
 
     /**
-     * Resolved through our own sounds.json, which points at Refurbished's
-     * generator engine loop rather than shipping a copy of it.
+     * Our own loop, built from a CC0 transformer recording - see the credits in
+     * the README. Both loops are ours rather than aliases into Refurbished, so
+     * nothing here breaks if they rename or drop a sound.
      */
     val EU_TRANSFORMER_HUM: RegistryObject<SoundEvent> = SOUNDS.register("eu_transformer_hum") {
         SoundEvent(id("eu_transformer_hum"))
     }
 
     /**
-     * The overload loop, borrowed the same way: Refurbished's recycle bin motor,
-     * which is already built to loop as level audio. Played slow and low, it reads
-     * as machinery labouring rather than as a fire.
+     * The overload loop: the same recording, pulsed and pitched down, so a
+     * faulting transformer reads as the same machine labouring rather than as a
+     * different device entirely.
      */
     val EU_TRANSFORMER_OVERLOAD: RegistryObject<SoundEvent> = SOUNDS.register("eu_transformer_overload") {
         SoundEvent(id("eu_transformer_overload"))

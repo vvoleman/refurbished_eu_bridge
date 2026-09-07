@@ -4,7 +4,7 @@
     "subtitle": "subtitles.refurbished_eu.eu_transformer_hum",
     "sounds": [
       {
-        "name": "refurbished_furniture:block/electricity_generator/engine",
+        "name": "refurbished_eu:eu_transformer_hum",
         "stream": false
       }
     ]
@@ -14,7 +14,7 @@
     "subtitle": "subtitles.refurbished_eu.eu_transformer_overload",
     "sounds": [
       {
-        "name": "refurbished_furniture:block/recycle_bin/engine",
+        "name": "refurbished_eu:eu_transformer_overload",
         "stream": false
       }
     ]

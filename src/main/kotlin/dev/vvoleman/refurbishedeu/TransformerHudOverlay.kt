@@ -37,11 +37,15 @@ object TransformerHudOverlay {
     private const val VERTICAL_OFFSET = 32
 
     /**
-     * Our own bolt rather than Refurbished's: theirs is baked orange, both in
-     * gui/icons.png and in their icon font, and a shader tint multiplies, so no
-     * colour we pass could turn it green or grey. This one is a white body with a
-     * black outline - white takes the tint cleanly, black stays black - drawn to
-     * the same 10px footprint and silhouette as theirs.
+     * Our own bolt, and our own silhouette: Refurbished's is baked orange in both
+     * gui/icons.png and their icon font, and a shader tint multiplies, so no
+     * colour we pass could ever turn it green or grey.
+     *
+     * White body, black drop shadow down and right. White takes the tint cleanly
+     * and black stays black, and spending the edge on a shadow rather than a full
+     * outline leaves two more pixels of body - which at 10px is the difference
+     * between a bolt and a smudge. The text beside it is drawn with a shadow for
+     * the same reason.
      */
     private val ICONS = ResourceLocation("refurbished_eu", "textures/gui/status_bolt.png")
 

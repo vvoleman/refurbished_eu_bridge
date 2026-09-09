@@ -49,12 +49,6 @@ object TransformerHudOverlay {
      */
     private val ICONS = ResourceLocation("refurbished_eu", "textures/gui/status_bolt.png")
 
-    private enum class Status(val red: Float, val green: Float, val blue: Float) {
-        ON(0.35f, 0.83f, 0.36f),
-        OFF(0.62f, 0.62f, 0.62f),
-        OVERLOADED(0.91f, 0.29f, 0.24f)
-    }
-
     fun register(bus: IEventBus) {
         bus.addListener(::onRenderOverlay)
     }
@@ -76,10 +70,11 @@ object TransformerHudOverlay {
         val connected = blockEntity.connectedCount
         val max = TransformerConfig.maxDevices(blockEntity.tier)
 
+        // Same tints as the GUI panel, so the bolt never disagrees with itself.
         val status = when {
-            blockEntity.isNodeOverloaded -> Status.OVERLOADED
-            blockEntity.isNodePowered -> Status.ON
-            else -> Status.OFF
+            blockEntity.isNodeOverloaded -> TransformerStatus.OVERLOADED
+            blockEntity.isNodePowered -> TransformerStatus.RUNNING
+            else -> TransformerStatus.OFF
         }
 
         val devices = Component.translatable("hud.refurbished_eu.devices", connected, max)
@@ -93,7 +88,7 @@ object TransformerHudOverlay {
         drawLabel(minecraft, event.poseStack, label, status)
     }
 
-    private fun drawLabel(minecraft: Minecraft, poseStack: PoseStack, text: Component, status: Status) {
+    private fun drawLabel(minecraft: Minecraft, poseStack: PoseStack, text: Component, status: TransformerStatus) {
         val font = minecraft.font
         val boxWidth = PADDING + ICON_SIZE + PADDING + font.width(text) + PADDING
         val boxHeight = PADDING + LINE_HEIGHT + PADDING

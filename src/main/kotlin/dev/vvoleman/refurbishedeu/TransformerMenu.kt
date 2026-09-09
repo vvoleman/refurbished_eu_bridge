@@ -54,7 +54,19 @@ class TransformerMenu(
             blockEntity?.cycleControlMode()
             true
         }
-        else -> false
+        else -> selectMode(id)
+    }
+
+    /**
+     * The segmented control names the mode it wants instead of cycling to it.
+     * Cycling is one click while there are two modes and a race as soon as there
+     * are three, and it also means two quick clicks cannot land on a mode nobody
+     * asked for.
+     */
+    private fun selectMode(id: Int): Boolean {
+        val mode = ControlMode.values().getOrNull(id - BUTTON_MODE_BASE) ?: return false
+        blockEntity?.setControlMode(mode)
+        return true
     }
 
     override fun stillValid(player: Player): Boolean {
@@ -69,6 +81,13 @@ class TransformerMenu(
 
     companion object {
         const val BUTTON_TOGGLE_POWER = 0
+
+        /** Kept for the Home Control app and anything else that just wants "next". */
         const val BUTTON_CYCLE_MODE = 1
+
+        /** Ids from here up name a ControlMode by ordinal. */
+        private const val BUTTON_MODE_BASE = 10
+
+        fun buttonForMode(mode: ControlMode): Int = BUTTON_MODE_BASE + mode.ordinal
     }
 }

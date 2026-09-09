@@ -5,7 +5,6 @@ import net.minecraft.core.BlockPos
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.world.inventory.MenuType
-import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.CreativeModeTab
 import net.minecraft.world.item.Item
 import net.minecraft.world.level.block.Block
@@ -51,9 +50,10 @@ object RefurbishedEuBridge {
     val TRANSFORMER_ITEMS: Map<TransformerTier, RegistryObject<Item>> =
         TransformerTier.values().associateWith { tier ->
             ITEMS.register(tier.id) {
-                BlockItem(
+                TransformerBlockItem(
                     TRANSFORMERS.getValue(tier).get(),
-                    Item.Properties().tab(CreativeModeTab.TAB_REDSTONE)
+                    Item.Properties().tab(CreativeModeTab.TAB_REDSTONE),
+                    tier
                 )
             }
         }
